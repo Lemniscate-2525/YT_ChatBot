@@ -14,7 +14,10 @@ from exceptions import (
     RateLimitExceededError,
 )
 from ingestion.ingestion import ingest_video
-from knowledge_graph.entity_verification import verify_entity_mention
+from knowledge_graph.entity_verification import (
+    register_video_entities,
+    verify_entity_mention,
+)
 from knowledge_graph.graph_store import get_knowledge_graph
 from rag import ask_question
 
@@ -36,6 +39,15 @@ class IngestRequest(BaseModel):
 class EntityVerifyRequest(BaseModel):
     mention: str = Field(min_length=1, max_length=150)
     entity_type: str = Field(default="PERSON", max_length=40)
+
+
+class EntityRegistration(BaseModel):
+    canonical_name: str = Field(min_length=1, max_length=150)
+    entity_type: str = Field(default="PERSON", max_length=40)
+    aliases: list[str] = Field(default_factory=list)
+    evidence: str = Field(min_length=5, max_length=1000)
+    verified: bool = False
+    source_video_id: str | None = Field(default=None, max_length=20)
 
 
 @app.get("/health")
@@ -88,6 +100,26 @@ def resolve_entity(request: EntityVerifyRequest) -> dict[str, Any]:
     except Exception as exc:
         logger.exception("Entity resolution failed")
         raise HTTPException(status_code=500, detail="Entity resolution failed") from exc
+
+
+@app.post("/entities/register")
+def register_entity(request: EntityRegistration) -> dict[str, Any]:
+    """Register a human-reviewed or independently sourced canonical entity."""
+    try:
+        graph = get_knowledge_graph()
+        node_id = graph.add_entity(
+            request.canonical_name,
+            entity_type=request.entity_type,
+            aliases=request.aliases,
+            source_video_id=request.source_video_id,
+            evidence=request.evidence,
+            verified=request.verified,
+        )
+        graph.save()
+        return {"registered": True, "entity": graph.get_entity(node_id)}
+    except Exception as exc:
+        logger.exception("Entity registration failed")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/graph/summary")
