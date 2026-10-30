@@ -7,13 +7,39 @@ import requests
 import streamlit as st
 
 API_URL = os.getenv("RAG_API_URL", "http://localhost:8000").rstrip("/")
+try:
+    API_KEY = st.secrets.get("RAG_API_KEY", os.getenv("RAG_API_KEY", ""))
+except Exception:
+    API_KEY = os.getenv("RAG_API_KEY", "")
+
+def api_headers() -> dict[str, str]:
+    if not API_KEY:
+        raise RuntimeError(
+            "Missing RAG_API_KEY. Set it in Streamlit Cloud → App settings → Secrets "
+            "or in your local .env file."
+        )
+    return {"X-API-Key": API_KEY}
+
+def api_post(path: str, **kwargs):
+    return requests.post(
+        f"{API_URL}{path}",
+        headers=api_headers(),
+        **kwargs,
+    )
+
+def api_get(path: str, **kwargs):
+    return requests.get(
+        f"{API_URL}{path}",
+        headers=api_headers(),
+        **kwargs,
+    )
 st.set_page_config(page_title="YouTube RAG", page_icon="🎥", layout="wide")
 st.title("🎥 YouTube RAG Assistant")
 st.caption("Ingest videos, ask questions, and inspect timestamped evidence.")
 
 with st.sidebar:
     st.subheader("Backend")
-    st.code(API_URL)
+    st.code(API_URL)\n    st.caption("Authenticated backend connection")
     if st.button("Check API health"):
         try:
             response = requests.get(f"{API_URL}/health", timeout=5)
@@ -144,7 +170,7 @@ if resolve:
             st.error(f"Entity resolution failed: {detail}")
 
 try:
-    response = requests.get(f"{API_URL}/graph/summary", timeout=5)
+    response = api_get("/graph/summary", timeout=5)
     if response.ok:
         stats = response.json()
         st.caption(
