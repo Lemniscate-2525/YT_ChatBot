@@ -7,7 +7,6 @@ import requests
 import streamlit as st
 
 API_URL = os.getenv("RAG_API_URL", "http://localhost:8000").rstrip("/")
-
 st.set_page_config(page_title="YouTube RAG", page_icon="🎥", layout="wide")
 st.title("🎥 YouTube RAG Assistant")
 st.caption("Ingest videos, ask questions, and inspect timestamped evidence.")
@@ -28,7 +27,6 @@ with st.form("ingest_form"):
     video_url = st.text_input("YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
     refresh = st.checkbox("Refresh if already ingested", value=False)
     submitted = st.form_submit_button("Ingest video")
-
 if submitted:
     if not video_url.strip():
         st.warning("Enter a YouTube URL first.")
@@ -49,11 +47,7 @@ if submitted:
 
 st.divider()
 st.header("2. Ask questions across ingested videos")
-question = st.text_input(
-    "Your question",
-    max_chars=200,
-    placeholder="What does the speaker say about customer acquisition?",
-)
+question = st.text_input("Your question", max_chars=200)
 user_id = st.text_input(
     "Development user ID",
     value="streamlit-dev-user",
@@ -83,31 +77,71 @@ if st.button("Ask", type="primary", disabled=not question.strip()):
 
 st.divider()
 st.header("3. Knowledge graph")
-col1, col2 = st.columns([2, 1])
-with col1:
-    mention = st.text_input("Check a possible entity spelling", placeholder="Alex Shomzi")
-with col2:
-    entity_type = st.selectbox("Entity type", ["PERSON", "ORG", "PRODUCT", "LOCATION"])
-
-if st.button("Resolve entity", disabled=not mention.strip()):
-    try:
-        response = requests.post(
-            f"{API_URL}/entities/resolve",
-            json={"mention": mention, "entity_type": entity_type},
-            timeout=10,
+st.caption(
+    "Add canonical entities only after independent verification. "
+    "Fuzzy matching suggests candidates; it does not prove identity."
+)
+with st.expander("Register a reviewed entity"):
+    with st.form("entity_registration"):
+        canonical = st.text_input("Canonical name", placeholder="Alex Hormozi")
+        aliases_text = st.text_input("Known aliases (comma-separated)", placeholder="Alex Hormozy")
+        evidence = st.text_area(
+            "Verification evidence",
+            placeholder="Official video metadata or a human-reviewed source...",
         )
-        response.raise_for_status()
-        result = response.json()
-        if result.get("status") == "candidate_match":
-            st.info("Candidate match found. This is a suggestion, not an automatic correction.")
-        elif result.get("status") == "needs_review":
-            st.warning("Possible match; manual verification required.")
+        source_video_id = st.text_input("Related video ID (optional)")
+        verified = st.checkbox("I independently reviewed this entity and evidence")
+        register = st.form_submit_button("Register entity")
+    if register:
+        if not canonical.strip() or not evidence.strip():
+            st.warning("Canonical name and verification evidence are required.")
         else:
-            st.warning("No sufficiently strong graph match found.")
-        st.json(result)
-    except requests.RequestException as exc:
-        detail = getattr(getattr(exc, "response", None), "text", str(exc))
-        st.error(f"Entity resolution failed: {detail}")
+            try:
+                aliases = [value.strip() for value in aliases_text.split(",") if value.strip()]
+                response = requests.post(
+                    f"{API_URL}/entities/register",
+                    json={
+                        "canonical_name": canonical.strip(),
+                        "aliases": aliases,
+                        "evidence": evidence.strip(),
+                        "source_video_id": source_video_id.strip() or None,
+                        "verified": verified,
+                    },
+                    timeout=10,
+                )
+                response.raise_for_status()
+                st.success("Entity registered")
+                st.json(response.json())
+            except requests.RequestException as exc:
+                detail = getattr(getattr(exc, "response", None), "text", str(exc))
+                st.error(f"Registration failed: {detail}")
+
+with st.form("entity_resolution"):
+    mention = st.text_input("Possible transcript spelling", placeholder="Alex Shomzi")
+    entity_type = st.selectbox("Entity type", ["PERSON", "ORG", "PRODUCT", "LOCATION"])
+    resolve = st.form_submit_button("Resolve entity")
+if resolve:
+    if not mention.strip():
+        st.warning("Enter a name to check.")
+    else:
+        try:
+            response = requests.post(
+                f"{API_URL}/entities/resolve",
+                json={"mention": mention.strip(), "entity_type": entity_type},
+                timeout=10,
+            )
+            response.raise_for_status()
+            result = response.json()
+            if result.get("status") == "candidate_match":
+                st.info("Strong string candidate. Check the evidence before using it.")
+            elif result.get("status") == "needs_review":
+                st.warning("Possible match; manual verification required.")
+            else:
+                st.warning("No sufficiently strong graph match found.")
+            st.json(result)
+        except requests.RequestException as exc:
+            detail = getattr(getattr(exc, "response", None), "text", str(exc))
+            st.error(f"Entity resolution failed: {detail}")
 
 try:
     response = requests.get(f"{API_URL}/graph/summary", timeout=5)
