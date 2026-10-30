@@ -1,26 +1,18 @@
 # YouTube RAG Assistant
 
-YouTube transcript RAG with timestamped sources, Redis rate limiting, a local knowledge graph for entity cross-checks, a FastAPI service, and a Streamlit frontend.
+YouTube transcript RAG with timestamped citations, Redis-backed rate limiting, a reviewed knowledge graph, an authenticated FastAPI backend, and a Streamlit frontend.
 
 ## Architecture
 
 \`\`\`text
-Streamlit (app.py)
-        |
-        | HTTP
-        v
-FastAPI (api/main.py)
-    |            |
-    |            +--> Knowledge graph (knowledge_graph/)
-    |
-    +--> RAG inference (rag.py) --> Chroma (chroma_db/)
-    |
-    +--> Ingestion (ingestion/) --> YouTube transcript --> chunk/embed/store
-
-Redis provides global and per-user request limits.
+Streamlit Cloud (app.py) -- X-API-Key --> Render FastAPI (api/main.py)
+                                             |-- RAG inference --> Chroma
+                                             |-- ingestion --> YouTube transcripts
+                                             |-- entity resolution --> knowledge graph
+                                             |-- global/per-client rate limiting --> Redis
 \`\`\`
 
-## Setup
+## Local setup
 
 Use Python 3.11 or 3.12.
 
@@ -31,15 +23,7 @@ python -m pip install --upgrade pip
 pip install -r req.txt
 \`\`\`
 
-Create a local \`.env\` file (never commit it):
-
-\`\`\`env
-GEMINI_API_KEY=your_gemini_key
-GROQ_API_KEY=your_groq_key
-REDIS_URL=redis://localhost:6379/0
-\`\`\`
-
-Start Redis (Docker required):
+Copy \`.env.example\` to \`.env\` and fill in your provider keys. Start Redis locally:
 
 \`\`\`powershell
 docker run -d --name rag-redis -p 6379:6379 redis:7-alpine
@@ -47,61 +31,79 @@ docker run -d --name rag-redis -p 6379:6379 redis:7-alpine
 
 If the container already exists, use \`docker start rag-redis\`.
 
-## Run the services
-
-Terminal 1 — FastAPI:
+Terminal 1:
 
 \`\`\`powershell
 uvicorn api.main:app --reload
 \`\`\`
 
-API docs: http://127.0.0.1:8000/docs
-
-Terminal 2 — Streamlit:
+Terminal 2:
 
 \`\`\`powershell
 streamlit run app.py
 \`\`\`
 
-The frontend calls FastAPI at \`http://localhost:8000\`. Override with \`RAG_API_URL\` if needed.
+For local calls, set \`RAG_API_URL=http://localhost:8000\` and \`RAG_API_KEY\` to the same strong random value in your local environment.
 
-## Main endpoints
+## Deploy the API to Render
+
+1. Push this repository to GitHub.
+2. In Render, create a new **Blueprint** from this repository and select \`render.yaml\`.
+3. Render generates \`RAG_API_KEY\`. Keep it private.
+4. Set \`GEMINI_API_KEY\` and \`GROQ_API_KEY\` in Render environment variables.
+5. Provision a Redis instance and set \`REDIS_URL\` to its **private/internal connection URL**. Do not use localhost for hosted Redis.
+6. The blueprint mounts a persistent disk at \`/var/data\` for Chroma and the knowledge graph.
+7. After deployment, check \`https://YOUR-RENDER-SERVICE.onrender.com/health\`. This liveness endpoint is intentionally public.
+8. Do not expose the service URL with API credentials in a public repository or logs.
+
+The disk begins empty. Ingest your videos through the authenticated frontend after deployment; local \`chroma_db\` files are ignored by Git and are not automatically uploaded. Keep the disk attached to the same service and back it up before destructive changes.
+
+## Deploy the frontend to Streamlit Community Cloud
+
+1. Create a Streamlit Community Cloud app from this GitHub repository.
+2. Set the main file path to \`app.py\`.
+3. In the app's **Settings → Secrets**, add:
+
+\`\`\`toml
+RAG_API_URL = "https://YOUR-RENDER-SERVICE.onrender.com"
+RAG_API_KEY = "paste-the-same-secret-generated-by-Render"
+\`\`\`
+
+4. Deploy/reboot the Streamlit app. The API key is read server-side from Streamlit secrets and sent in the \`X-API-Key\` header; it is not shown in the UI.
+
+The repository includes both \`req.txt\` (Render backend) and \`requirements.txt\` (Streamlit Cloud's conventional dependency filename).
+
+## API endpoints
+
+Only \`GET /health\` is public. All other endpoints require the \`X-API-Key\` header.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | \`/health\` | Liveness check (no model initialization) |
+| GET | \`/health\` | Public liveness check |
 | POST | \`/ingest\` | Fetch transcript, chunk, embed, and store a video |
 | POST | \`/ask\` | Retrieve evidence and generate an answer |
 | POST | \`/entities/register\` | Register a reviewed canonical entity and aliases |
 | POST | \`/entities/resolve\` | Resolve a name against graph aliases |
-| GET | \`/graph/summary\` | Graph counts |
+| GET | \`/graph/summary\` | Graph statistics |
 
-## Knowledge graph workflow
+Interactive API docs are disabled by default. Set \`ENABLE_API_DOCS=true\` only for controlled debugging.
 
-The graph is a local NetworkX \`MultiDiGraph\`, persisted to \`data/knowledge_graph.json\` (ignored by Git).
+## Security model and production caveats
 
-1. Open the Streamlit UI.
-2. Under **Knowledge graph → Register a reviewed entity**, add a canonical name such as \`Alex Hormozi\`.
-3. Add aliases only when independently supported (for example, a spelling confirmed by a human review or source metadata).
-4. Include the evidence and optionally the YouTube video ID.
-5. Search a transcript spelling in the resolver. Strong aliases produce a candidate match; weaker matches are marked \`needs_review\`; unrelated text returns \`not_found\`.
-6. During RAG inference, name phrases in retrieved chunks are checked against the graph. Reviewed matches are supplied to the LLM separately from transcript text.
+- This is **service-to-service API-key authentication**, not individual end-user accounts or OAuth. It protects the backend from unauthenticated callers and is appropriate for a single trusted Streamlit frontend MVP.
+- Keep the API key in Render environment variables and Streamlit Cloud secrets only. Never commit it, paste it into client-side code, or log it.
+- Rotate the key if exposed. Use separate keys for staging and production.
+- The current rate limiter treats requests from the Streamlit service as one client identity. Real per-user quotas require user authentication and a trusted user ID, not a user-editable text field.
+- Redis should be private to the backend service. If Redis is unavailable, requests should fail rather than silently bypass rate limiting.
+- The local JSON knowledge graph uses the Render persistent disk. This is suitable for a single service instance; multi-instance deployments need shared storage and concurrency control.
+- The app requires valid provider keys. YouTube transcript retrieval may fail for videos without accessible captions or when YouTube blocks the service IP.
+- Fuzzy matching suggests candidate entities; it does not prove identity. Register aliases only with independent evidence.
+- Add individual accounts, OAuth, role-based permissions, audit trails, and stronger abuse controls before treating this as a multi-user public product.
 
-**Important:** Fuzzy similarity is not proof of identity. The graph never silently rewrites transcript text. It preserves the source wording and asks the answer model to distinguish it from reviewed identity evidence. The graph must be seeded with reviewed entities; an empty graph cannot infer who a speaker is. This baseline uses heuristic name-phrase extraction, not a full named-entity recognition model.
-
-## Local tests
+## Tests
 
 \`\`\`powershell
 python -m pytest tests/ -v
 \`\`\`
 
-The graph tests are local and deterministic. API tests require the dependencies in \`req.txt\`. Full ingestion and inference additionally require valid provider keys, a running Redis instance, and a populated Chroma collection.
-
-## Current deployment caveats
-
-- API and Streamlit are separate processes; run both.
-- The Streamlit user ID and API request user ID are development placeholders. Production must derive identity from authentication.
-- Protect write endpoints and add authentication/authorization before exposing this API publicly.
-- Redis rate limiting is only effective when all requests pass through the API.
-- The local JSON graph is suitable for this project MVP. A multi-worker or multi-instance deployment should use a shared database/graph service with concurrency control.
-- Entity matching proposes candidates; it does not independently verify a person's identity or the truth of a statement.
+GitHub Actions runs the test suite with Redis provisioned as a service.
