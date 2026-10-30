@@ -25,7 +25,7 @@ def test_retries_then_succeeds():
         ],
     ]
 
-    with patch("yt_client._wait_before_retry") as wait_mock:
+    with patch("ingestion.yt_client._wait_before_retry") as wait_mock:
         segments = client.fetch_transcript(
             "https://youtu.be/xhTXq26dwoA"
         )
@@ -49,7 +49,7 @@ def test_stops_after_three_attempts():
         "Persistent network failure"
     )
 
-    with patch("yt_client._wait_before_retry"):
+    with patch("ingestion.yt_client._wait_before_retry"):
         try:
             client.fetch_transcript(
                 "https://youtu.be/xhTXq26dwoA"
@@ -119,7 +119,7 @@ def test_fetch_retries_http_503_then_succeeds():
         [Mock(text="Hello world", start=0.0, duration=2.0)],
     ]
 
-    with patch("yt_client._wait_before_retry") as wait_mock:
+    with patch("ingestion.yt_client._wait_before_retry") as wait_mock:
         segments = client.fetch_transcript(
             "https://youtu.be/xhTXq26dwoA"
         )
@@ -146,7 +146,7 @@ def test_fetch_does_not_retry_http_403():
 
     client._api.fetch.side_effect = error
 
-    with patch("yt_client._wait_before_retry") as wait_mock:
+    with patch("ingestion.yt_client._wait_before_retry") as wait_mock:
         try:
             client.fetch_transcript(
                 "https://youtu.be/xhTXq26dwoA"
@@ -182,7 +182,7 @@ def test_empty_transcript_fails_immediately():  # No point of retrying empty tra
     client._api = Mock()
     client._api.fetch.return_value = []
 
-    with patch("yt_client._wait_before_retry") as wait_mock:
+    with patch("ingestion.yt_client._wait_before_retry") as wait_mock:
         try:
             client.fetch_transcript("https://youtu.be/xhTXq26dwoA")
         except TranscriptError as exc:
@@ -202,7 +202,7 @@ def test_permanent_transcript_failure_is_not_retried():  # Perm failure like may
     error = TranscriptsDisabled("xhTXq26dwoA")
     client._api.fetch.side_effect = error
 
-    with patch("yt_client._wait_before_retry") as wait_mock:
+    with patch("ingestion.yt_client._wait_before_retry") as wait_mock:
         try:
             client.fetch_transcript("https://youtu.be/xhTXq26dwoA")
         except TranscriptError:
