@@ -28,3 +28,7 @@ transcript.txt
 .idea/
 desktop.ini
 .DS_Store
+
+# Local knowledge graph and Streamlit secrets
+data/knowledge_graph.json
+.streamlit/secrets.toml
