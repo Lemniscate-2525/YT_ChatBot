@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: yt-chatbot-api
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r req.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: yt-chatbot-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: CHROMA_DIR
+        value: /var/data/chroma_db
+      - key: KNOWLEDGE_GRAPH_PATH
+        value: /var/data/knowledge_graph.json
+      - key: ENABLE_API_DOCS
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: RAG_API_KEY
+        generateValue: true
+      - key: REDIS_URL
+        sync: false
