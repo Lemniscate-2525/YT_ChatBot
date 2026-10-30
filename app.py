@@ -6,14 +6,39 @@ import os
 import requests
 import streamlit as st
 
-API_URL = os.getenv("RAG_API_URL", "http://localhost:8000").rstrip("/")
 st.set_page_config(page_title="YouTube RAG", page_icon="🎥", layout="wide")
+
+API_URL = os.getenv("RAG_API_URL", "http://localhost:8000").rstrip("/")
+try:
+    API_KEY = st.secrets.get("RAG_API_KEY", os.getenv("RAG_API_KEY", ""))
+except Exception:
+    API_KEY = os.getenv("RAG_API_KEY", "")
+
+
+def api_headers() -> dict[str, str]:
+    if not API_KEY:
+        raise RuntimeError(
+            "Missing RAG_API_KEY. Set it in Streamlit Cloud → App settings → Secrets "
+            "or in your local environment."
+        )
+    return {"X-API-Key": API_KEY}
+
+
+def api_post(path: str, **kwargs):
+    return requests.post(f"{API_URL}{path}", headers=api_headers(), **kwargs)
+
+
+def api_get(path: str, **kwargs):
+    return requests.get(f"{API_URL}{path}", headers=api_headers(), **kwargs)
+
+
 st.title("🎥 YouTube RAG Assistant")
 st.caption("Ingest videos, ask questions, and inspect timestamped evidence.")
 
 with st.sidebar:
     st.subheader("Backend")
     st.code(API_URL)
+    st.caption("Authenticated backend connection")
     if st.button("Check API health"):
         try:
             response = requests.get(f"{API_URL}/health", timeout=5)
@@ -33,14 +58,16 @@ if submitted:
     else:
         try:
             with st.spinner("Fetching transcript, chunking, embedding, and storing..."):
-                response = requests.post(
-                    f"{API_URL}/ingest",
+                response = api_post(
+                    "/ingest",
                     json={"video_url": video_url.strip(), "refresh": refresh},
                     timeout=300,
                 )
                 response.raise_for_status()
             st.success("Ingestion completed")
             st.json(response.json())
+        except RuntimeError as exc:
+            st.error(str(exc))
         except requests.RequestException as exc:
             detail = getattr(getattr(exc, "response", None), "text", str(exc))
             st.error(f"Ingestion failed: {detail}")
@@ -48,17 +75,12 @@ if submitted:
 st.divider()
 st.header("2. Ask questions across ingested videos")
 question = st.text_input("Your question", max_chars=200)
-user_id = st.text_input(
-    "Development user ID",
-    value="streamlit-dev-user",
-    help="Demo only; production should derive this from authentication.",
-)
 if st.button("Ask", type="primary", disabled=not question.strip()):
     try:
         with st.spinner("Retrieving evidence and generating an answer..."):
-            response = requests.post(
-                f"{API_URL}/ask",
-                json={"question": question, "user_id": user_id},
+            response = api_post(
+                "/ask",
+                json={"question": question},
                 timeout=120,
             )
             response.raise_for_status()
@@ -71,6 +93,8 @@ if st.button("Ask", type="primary", disabled=not question.strip()):
                 if source.get("url"):
                     st.markdown(f"[Open at timestamp]({source['url']})")
                 st.write(source.get("text", ""))
+    except RuntimeError as exc:
+        st.error(str(exc))
     except requests.RequestException as exc:
         detail = getattr(getattr(exc, "response", None), "text", str(exc))
         st.error(f"Question failed: {detail}")
@@ -98,8 +122,8 @@ with st.expander("Register a reviewed entity"):
         else:
             try:
                 aliases = [value.strip() for value in aliases_text.split(",") if value.strip()]
-                response = requests.post(
-                    f"{API_URL}/entities/register",
+                response = api_post(
+                    "/entities/register",
                     json={
                         "canonical_name": canonical.strip(),
                         "aliases": aliases,
@@ -112,6 +136,8 @@ with st.expander("Register a reviewed entity"):
                 response.raise_for_status()
                 st.success("Entity registered")
                 st.json(response.json())
+            except RuntimeError as exc:
+                st.error(str(exc))
             except requests.RequestException as exc:
                 detail = getattr(getattr(exc, "response", None), "text", str(exc))
                 st.error(f"Registration failed: {detail}")
@@ -125,8 +151,8 @@ if resolve:
         st.warning("Enter a name to check.")
     else:
         try:
-            response = requests.post(
-                f"{API_URL}/entities/resolve",
+            response = api_post(
+                "/entities/resolve",
                 json={"mention": mention.strip(), "entity_type": entity_type},
                 timeout=10,
             )
@@ -139,17 +165,19 @@ if resolve:
             else:
                 st.warning("No sufficiently strong graph match found.")
             st.json(result)
+        except RuntimeError as exc:
+            st.error(str(exc))
         except requests.RequestException as exc:
             detail = getattr(getattr(exc, "response", None), "text", str(exc))
             st.error(f"Entity resolution failed: {detail}")
 
 try:
-    response = requests.get(f"{API_URL}/graph/summary", timeout=5)
+    response = api_get("/graph/summary", timeout=5)
     if response.ok:
         stats = response.json()
         st.caption(
             f"Knowledge graph: {stats.get('entities', 0)} nodes · "
             f"{stats.get('relationships', 0)} relationships"
         )
-except requests.RequestException:
+except (requests.RequestException, RuntimeError):
     pass
