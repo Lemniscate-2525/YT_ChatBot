@@ -51,7 +51,7 @@ For local calls, set \`RAG_API_URL=http://localhost:8000\` and \`RAG_API_KEY\` t
 2. In Render, create a new **Blueprint** from this repository and select \`render.yaml\`.
 3. Render generates \`RAG_API_KEY\`. Keep it private.
 4. Set \`GEMINI_API_KEY\` and \`GROQ_API_KEY\` in Render environment variables.
-5. Provision a Redis instance and set \`REDIS_URL\` to its **private/internal connection URL**. Do not use localhost for hosted Redis.
+5. Create a Redis database on [Upstash](https://console.upstash.com/) using its free tier. In the database console, copy the TLS connection URL (usually starts with \`rediss://\`) and add it to the Render API service as the \`REDIS_URL\` environment variable. Keep the URL secret. Do not use \`localhost\` for hosted Redis. Upstash is external to Render, so a public TLS connection URL is expected; do not use an internal Render URL.
 6. The blueprint mounts a persistent disk at \`/var/data\` for Chroma and the knowledge graph.
 7. After deployment, check \`https://YOUR-RENDER-SERVICE.onrender.com/health\`. This liveness endpoint is intentionally public.
 8. Do not expose the service URL with API credentials in a public repository or logs.
