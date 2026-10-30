@@ -8,3 +8,15 @@ youtube-transcript-api
 yt-dlp
 python-dotenv
 pytest
+
+# Knowledge graph and entity matching
+networkx
+rapidfuzz
+
+# API and UI
+fastapi
+uvicorn[standard]
+streamlit
+requests
+redis
+httpx
