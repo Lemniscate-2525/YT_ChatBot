@@ -28,7 +28,9 @@ class KnowledgeGraph:
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = nx.node_link_data(self.graph)
-        fd, temporary = tempfile.mkstemp(prefix=self.path.name, suffix=".tmp", dir=str(self.path.parent))
+        fd, temporary = tempfile.mkstemp(
+            prefix=self.path.name, suffix=".tmp", dir=str(self.path.parent)
+        )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, ensure_ascii=False, indent=2)
@@ -72,7 +74,11 @@ class KnowledgeGraph:
         )
         if source_video_id:
             video_node = f"VIDEO::{source_video_id}"
-            self.graph.add_node(video_node, entity_type="VIDEO", video_id=source_video_id)
+            self.graph.add_node(
+                video_node,
+                entity_type="VIDEO",
+                video_id=source_video_id,
+            )
             self.graph.add_edge(
                 video_node,
                 node_id,
@@ -111,7 +117,11 @@ class KnowledgeGraph:
         """Return a candidate decision; never automatically correct source text."""
         query = (mention or "").strip()
         if not query:
-            return {"status": "not_found", "mention": mention, "candidate": None}
+            return {
+                "status": "not_found",
+                "mention": mention,
+                "candidate": None,
+            }
 
         choices: dict[str, str] = {}
         for node_id, data in self.graph.nodes(data=True):
@@ -119,21 +129,37 @@ class KnowledgeGraph:
                 for alias in data.get("aliases", []):
                     choices[alias] = node_id
         if not choices:
-            return {"status": "not_found", "mention": query, "candidate": None}
+            return {
+                "status": "not_found",
+                "mention": query,
+                "candidate": None,
+            }
 
-        match = process.extractOne(query, list(choices), scorer=fuzz.WRatio)
+        match = process.extractOne(
+            query,
+            list(choices),
+            scorer=fuzz.WRatio,
+        )
         if not match:
-            return {"status": "not_found", "mention": query, "candidate": None}
+            return {
+                "status": "not_found",
+                "mention": query,
+                "candidate": None,
+            }
 
         alias, score, _ = match
+        if score < review_threshold:
+            return {
+                "status": "not_found",
+                "mention": query,
+                "candidate": None,
+                "best_similarity_score": int(score),
+                "auto_correct": False,
+            }
+
         candidate_id = choices[alias]
         candidate = self.graph.nodes[candidate_id]
-        if score >= threshold:
-            status = "candidate_match"
-        elif score >= review_threshold:
-            status = "needs_review"
-        else:
-            status = "no_confident_match"
+        status = "candidate_match" if score >= threshold else "needs_review"
 
         return {
             "status": status,
@@ -154,8 +180,16 @@ class KnowledgeGraph:
         return {"id": node_id, **dict(self.graph.nodes[node_id])}
 
     def summary(self) -> dict[str, int]:
+        entity_count = sum(
+            1 for _, data in self.graph.nodes(data=True)
+            if data.get("entity_type") != "VIDEO"
+        )
         return {
-            "entities": self.graph.number_of_nodes(),
+            "entities": entity_count,
+            "videos": sum(
+                1 for _, data in self.graph.nodes(data=True)
+                if data.get("entity_type") == "VIDEO"
+            ),
             "relationships": self.graph.number_of_edges(),
         }
 
