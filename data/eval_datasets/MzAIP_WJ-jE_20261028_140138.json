@@ -1,0 +1,30 @@
+{
+  "video_id": "MzAIP_WJ-jE",
+  "created_at": "2026-10-28T14:01:38.715528",
+  "model": "openai/gpt-oss-20b",
+  "example_count": 2,
+  "examples": [
+    {
+      "question": "According to the speaker, what is the primary goal of hard work?",
+      "reference_answer": "Hard work is the goal.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_2_72b24f55c913",
+          "quote": "hard work is the goal.",
+          "start_seconds": 90.4
+        }
+      ]
+    },
+    {
+      "question": "What problem does the speaker identify for a successful cybersecurity business owner?",
+      "reference_answer": "He just gets bored and wants to start more things.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_8_d9f2ad4ab435",
+          "quote": "I just I get bored.",
+          "start_seconds": 347.36
+        }
+      ]
+    }
+  ]
+}

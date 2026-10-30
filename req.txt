@@ -1,0 +1,10 @@
+langchain-core
+langchain-text-splitters
+langchain-chroma
+langchain-google-genai
+langchain-groq
+langsmith
+youtube-transcript-api
+yt-dlp
+python-dotenv
+pytest

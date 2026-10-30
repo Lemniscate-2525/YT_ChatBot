@@ -1,0 +1,96 @@
+{
+  "video_id": "MzAIP_WJ-jE",
+  "created_at": "2026-10-28T15:52:57.073383",
+  "model": "gemini-3.8-flash",
+  "example_count": 8,
+  "examples": [
+    {
+      "question": "What company is Alex Hormozi the founder of, and what does it generate in revenue?",
+      "reference_answer": "Alex Hormozi is the founder of acquisition.com (referred to as acquisitions.com), a portfolio of companies generating hundreds of millions of dollars in aggregate revenue per year.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_0_3cb3d4349f03",
+          "quote": "I'm\nAlex Hormozi and the founder of\nacquisitions.com. It's a portfolio of\ncompanies that generate hundreds of\nmillions of dollars in revenue per year\nin aggregate.",
+          "start_seconds": 0.0
+        }
+      ]
+    },
+    {
+      "question": "How does Alex Hormozi define commitment?",
+      "reference_answer": "Hormozi defines commitment as the elimination of alternatives.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_4_77d5bb872195",
+          "quote": "I see commitment as the elimination of\nalternatives. So, if I get married, then\nI eliminate all alternatives to the\nperson that I'm married to. Right? That\nis commitment, right?",
+          "start_seconds": 177.12
+        }
+      ]
+    },
+    {
+      "question": "According to Alex Hormozi, how can you measure how powerful an individual is?",
+      "reference_answer": "A person's power can be measured by the distance between when they make a decision and when that decision actually happens in reality.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_10_042701946cd7",
+          "quote": "By the\nway, you can measure how powerful\nsomeone is by the distance between when\nthey make a decision and when it happens\nin reality.",
+          "start_seconds": 437.44
+        }
+      ]
+    },
+    {
+      "question": "What quote from Paul Graham regarding wealth and pain is cited?",
+      "reference_answer": "Paul Graham stated that to make a million dollars, a person must endure a million dollars worth of pain.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_28_fd443d571757",
+          "quote": "And so, I love\nthis quote from Paul Graham. He said,\n\"If you want to make a million dollars,\nyou have to endure a million dollars\nworth of pain.\"",
+          "start_seconds": 1251.36
+        }
+      ]
+    },
+    {
+      "question": "Why does Alex Hormozi state that consistent champions feel relieved rather than excited when they win?",
+      "reference_answer": "They feel relief because they hate losing more than they love winning, and their level of preparation leads them to expect the win.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_34_4bf1a9ff2e69",
+          "quote": "The people who always and very\nconsistently hit first place and win the\nchampionships are relieved because they\ntend to hate losing more than they love\nwinning. and they expected to win\nbecause of the level of preparation they\nhad compared to everyone\nelse.",
+          "start_seconds": 1539.84
+        }
+      ]
+    },
+    {
+      "question": "How long does Alex Hormozi claim it takes to become competent at nearly any skill?",
+      "reference_answer": "He states that a person can become competent at almost any skill in about 20 hours.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_34_4bf1a9ff2e69",
+          "quote": "You can beat most people\nat anything if you just stick with it\nfor a year. You can become competent at\njust about any skill in 20 hours.",
+          "start_seconds": 1539.84
+        }
+      ]
+    },
+    {
+      "question": "What method does Alex Hormozi recommend to overcome fear and self-doubt instead of using affirmations?",
+      "reference_answer": "He recommends outworking self-doubt through repetition and stimuli habituation—exposing oneself to the uncomfortable or bad situation repeatedly until it becomes normal.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_36_72d9faf83319",
+          "quote": "Outwork your\nself-doubt through repetition, not\naffirmations. You don't do it through\nbelief. You do it through stimuli\nhabituation, which is just fancy words\nfor saying you expose yourself to the\nbad things so many times they get used\nto and it's no longer a bad thing\nanymore.",
+          "start_seconds": 1640.4
+        }
+      ]
+    },
+    {
+      "question": "According to the speaker, what is the distinction between guilt and shame?",
+      "reference_answer": "Guilt occurs when you break your own internal rules, whereas shame occurs when you break the rules set by other people.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_40_c0ae7ef2db01",
+          "quote": "difference between shame and\nguilt? Guilt is when you break your own\nrules. Shame is when you break other\npeople's rules.",
+          "start_seconds": 1828.159
+        }
+      ]
+    }
+  ]
+}

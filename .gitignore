@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Tests and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Chroma database
+chroma_db/
+
+# Logs
+*.log
+
+# Local transcript
+transcript.txt
+
+# IDE and OS files
+.vscode/
+.idea/
+desktop.ini
+.DS_Store

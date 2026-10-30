@@ -1,0 +1,41 @@
+{
+  "video_id": "MzAIP_WJ-jE",
+  "created_at": "2026-10-28T14:53:55.415271",
+  "model": "openai/gpt-oss-20b",
+  "example_count": 3,
+  "examples": [
+    {
+      "question": "What does Alex Hormozi say about pain in the context of progress?",
+      "reference_answer": "Pain is the price of progress.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_0_3cb3d4349f03",
+          "quote": "Pain is the price of progress.",
+          "start_seconds": 0.0
+        }
+      ]
+    },
+    {
+      "question": "How does Alex define commitment and focus?",
+      "reference_answer": "Commitment is the elimination of alternatives; focus is doing literally nothing but one thing.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_4_77d5bb872195",
+          "quote": "I see commitment as the elimination of alternatives. So, if I get married, then I eliminate all alternatives to the person that I'm married to. Right? That is commitment, right? Which is very similar to focus. Focus, if you think of the hypothetical extreme of focus, is that somebody does literally nothing but one thing.",
+          "start_seconds": 177.12
+        }
+      ]
+    },
+    {
+      "question": "What strategy does Alex suggest for overcoming fear?",
+      "reference_answer": "Break the fear into pieces and spell it out.",
+      "evidence": [
+        {
+          "chunk_id": "MzAIP_WJ-jE_12_2082f5e7770e",
+          "quote": "If you're afraid of something, try and break it into pieces and spell it out.",
+          "start_seconds": 517.599
+        }
+      ]
+    }
+  ]
+}

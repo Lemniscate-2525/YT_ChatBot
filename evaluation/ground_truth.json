@@ -1,0 +1,106 @@
+{
+  "f8532e0b-3201-4e72-a2a0-9a91f6884590": {
+    "question": "What exactly is Alex Hormozi saying in this video?",
+    "relevant_chunk_ids": [
+      "4d5cfaf2-c49a-4e90-8d7a-df483e5299fd",
+      "9a2fcaa8-7b66-4d12-b9b3-1d30bb21e226",
+      "ce7f972a-364d-4ae5-b519-28831d639d90",
+      "87a70525-e89e-48bc-b999-3a91c1b71de0",
+      "a0edf138-11f3-47f8-a9d0-ae9a690d071e",
+      "b3c14f82-bec4-4cab-9033-12860a6e7f43",
+      "17a28a44-d32c-4c26-8820-66a00855aca6",
+      "91845dc1-e2b4-4c7f-8ce8-073c6707f007",
+      "7f904e04-fc18-45fe-a116-da7f57b46757",
+      "38f88e38-bea7-4faf-bab7-c0df7c0a01fd"
+    ],
+    "reasoning": "Each chunk contains a distinct part of Alex Hormozi’s message—his emphasis on urgency, the gap between thought and action, decision-making tactics, time perception, mortality, learning, and the $100M scaling roadmap. Together they provide a comprehensive view of what he is saying in the video.",
+    "reviewed": true
+  },
+  "e09a2767-2ddd-4005-9bdd-9c3def382960": {
+    "question": "According to the speaker, can you determine exactly how successful someone will become from how quickly they act?",
+    "relevant_chunk_ids": [
+      "4d5cfaf2-c49a-4e90-8d7a-df483e5299fd"
+    ],
+    "reasoning": "This chunk contains the speaker’s statement that you can gauge how successful someone will be by how quickly they act, directly addressing the question.",
+    "reviewed": true
+  },
+  "9dc85ac6-a097-481c-b2f6-e7dc7153b71a": {
+    "question": "What three lessons does the speaker say people should recognize about time, difficulty, and developing skills?",
+    "relevant_chunk_ids": [
+      "17a28a44-d32c-4c26-8820-66a00855aca6"
+    ],
+    "reasoning": "This chunk explicitly lists the three lessons the speaker emphasizes: 1) tomorrow isn’t guaranteed, 2) nothing is easy, and 3) it takes time to get good, covering time, difficulty, and skill development.",
+    "reviewed": true
+  },
+  "8980f0cf-215a-4c10-93a9-53048fc2b754": {
+    "question": "How does the speaker contrast doing a five-minute task immediately with postponing tasks?",
+    "relevant_chunk_ids": [
+      "ce7f972a-364d-4ae5-b519-28831d639d90"
+    ],
+    "reasoning": "Chunk C3 directly discusses the speaker’s advice to tackle a five‑minute task immediately, contrasting it with the habit of postponing tasks (e.g., setting end‑of‑week deadlines). It provides the specific comparison requested in the question.",
+    "reviewed": true
+  },
+  "e56c0ec4-f6fb-4563-ad13-a46291328fa5": {
+    "question": "What multiplier does the speaker claim can result from changing a deadline from the end of the week to the end of the day?",
+    "relevant_chunk_ids": [
+      "9a2fcaa8-7b66-4d12-b9b3-1d30bb21e226",
+      "ce7f972a-364d-4ae5-b519-28831d639d90"
+    ],
+    "reasoning": "Chunks C2 and C3 explicitly state that shifting a deadline from the end of the week to the end of the day increases progress by 7x, which directly answers the multiplier question.",
+    "reviewed": true
+  },
+  "1425ea89-af4d-44c2-a825-ab95112dae16": {
+    "question": "Which Latin word does the speaker associate with \"decide,\" and what meaning does he give it?",
+    "relevant_chunk_ids": [
+      "9a2fcaa8-7b66-4d12-b9b3-1d30bb21e226"
+    ],
+    "reasoning": "Chunk C2 contains the speaker’s explanation that the word \"decide\" comes from the Latin word \"decadere\" and that he interprets it as meaning \"to cut off\".",
+    "reviewed": true
+  },
+  "dcff9f6b-b60b-4161-8462-77372904464f": {
+    "question": "What does the speaker mean by \"potency\" in this video?",
+    "relevant_chunk_ids": [
+      "4d5cfaf2-c49a-4e90-8d7a-df483e5299fd"
+    ],
+    "reasoning": "Chunk C1 directly defines \"potency\" as a person's power and explains that it can be improved by reducing the gap between thoughts and action.",
+    "reviewed": true
+  },
+  "0b4d7ba2-a650-4a84-a6b9-e6e66df30e8a": {
+    "question": "How do urgency and the idea that developing skills takes time fit together in the speaker's argument?",
+    "relevant_chunk_ids": [
+      "4d5cfaf2-c49a-4e90-8d7a-df483e5299fd",
+      "9a2fcaa8-7b66-4d12-b9b3-1d30bb21e226",
+      "ce7f972a-364d-4ae5-b519-28831d639d90",
+      "17a28a44-d32c-4c26-8820-66a00855aca6",
+      "91845dc1-e2b4-4c7f-8ce8-073c6707f007"
+    ],
+    "reasoning": "Chunks C1–C3 explain the speaker’s emphasis on acting with urgency and reducing the gap between thought and action. Chunks C7 and C8 discuss that mastering a skill requires time, repetition, and early, sustained effort. Together they illustrate the speaker’s argument that urgency drives progress, but progress is only achieved when one commits to long‑term skill development.",
+    "reviewed": true
+  },
+  "198c131a-bc52-48f4-9dcf-0b5c9142a48f": {
+    "question": "How can an entrepreneur become more effective by changing the way they act on decisions?",
+    "relevant_chunk_ids": [
+      "4d5cfaf2-c49a-4e90-8d7a-df483e5299fd",
+      "9a2fcaa8-7b66-4d12-b9b3-1d30bb21e226",
+      "ce7f972a-364d-4ae5-b519-28831d639d90"
+    ],
+    "reasoning": "These chunks discuss acting with urgency, reducing the gap between thought and action, and practical tactics (e.g., setting tighter deadlines, eliminating alternatives, and doing tasks immediately) that directly help entrepreneurs make decisions faster and more effectively.",
+    "reviewed": true
+  },
+  "33bfdb09-e8c4-44f4-956a-c764931cdab6": {
+    "question": "What is the speaker's current age?",
+    "relevant_chunk_ids": [],
+    "reasoning": "The retrieved chunks discuss age in the context of another person's death, but none provides evidence of the speaker's own age.",
+    "reviewed": true
+  },
+  "ab9c53d9-3637-440e-a4a6-923b1412ecc6": {
+    "question": "What is this video about ? ",
+    "relevant_chunk_ids": [
+      "4d5cfaf2-c49a-4e90-8d7a-df483e5299fd",
+      "9a2fcaa8-7b66-4d12-b9b3-1d30bb21e226",
+      "ce7f972a-364d-4ae5-b519-28831d639d90"
+    ],
+    "reasoning": "These chunks describe the core theme of the video: the importance of acting with urgency, reducing the gap between thought and action, and using small time‑compression tactics to accelerate progress.",
+    "reviewed": true
+  }
+}
