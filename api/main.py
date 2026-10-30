@@ -1,8 +1,7 @@
-"""FastAPI inference and ingestion service for the YouTube RAG pipeline."""
+"""FastAPI ingestion and inference service for YouTube RAG."""
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -25,7 +24,7 @@ app = FastAPI(title="YouTube RAG API", version="1.0.0")
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=200)
-    # Development identity only. Replace with an authenticated principal in production.
+    # Demo identity only; production identity must come from authentication.
     user_id: str = Field(default="api-dev-user", min_length=1, max_length=100)
 
 
@@ -41,15 +40,13 @@ class EntityVerifyRequest(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    """Liveness only; does not make costly provider calls."""
     return {"status": "ok", "service": "youtube-rag-api"}
 
 
 @app.post("/ingest")
 def ingest(request: IngestRequest) -> dict[str, Any]:
     try:
-        result = ingest_video(str(request.video_url), refresh=request.refresh)
-        return result
+        return ingest_video(str(request.video_url), refresh=request.refresh)
     except Exception as exc:
         logger.exception("Ingestion failed")
         raise HTTPException(status_code=400, detail=f"{type(exc).__name__}: {exc}") from exc

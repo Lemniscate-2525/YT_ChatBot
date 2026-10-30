@@ -1,4 +1,4 @@
-"""Streamlit frontend. Talks to FastAPI; it does not load RAG models directly."""
+"""Streamlit frontend; all RAG/ingestion work is performed by FastAPI."""
 from __future__ import annotations
 
 import os
@@ -27,8 +27,9 @@ st.header("1. Ingest a YouTube video")
 with st.form("ingest_form"):
     video_url = st.text_input("YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
     refresh = st.checkbox("Refresh if already ingested", value=False)
-    ingest_submitted = st.form_submit_button("Ingest video")
-if ingest_submitted:
+    submitted = st.form_submit_button("Ingest video")
+
+if submitted:
     if not video_url.strip():
         st.warning("Enter a YouTube URL first.")
     else:
@@ -40,7 +41,7 @@ if ingest_submitted:
                     timeout=300,
                 )
                 response.raise_for_status()
-            st.success("Ingestion request completed")
+            st.success("Ingestion completed")
             st.json(response.json())
         except requests.RequestException as exc:
             detail = getattr(getattr(exc, "response", None), "text", str(exc))
@@ -48,8 +49,16 @@ if ingest_submitted:
 
 st.divider()
 st.header("2. Ask questions across ingested videos")
-question = st.text_input("Your question", max_chars=200, placeholder="What does the speaker say about customer acquisition?")
-user_id = st.text_input("Development user ID", value="streamlit-dev-user", help="Demo only; production should derive this from authentication.")
+question = st.text_input(
+    "Your question",
+    max_chars=200,
+    placeholder="What does the speaker say about customer acquisition?",
+)
+user_id = st.text_input(
+    "Development user ID",
+    value="streamlit-dev-user",
+    help="Demo only; production should derive this from authentication.",
+)
 if st.button("Ask", type="primary", disabled=not question.strip()):
     try:
         with st.spinner("Retrieving evidence and generating an answer..."):
@@ -79,6 +88,7 @@ with col1:
     mention = st.text_input("Check a possible entity spelling", placeholder="Alex Shomzi")
 with col2:
     entity_type = st.selectbox("Entity type", ["PERSON", "ORG", "PRODUCT", "LOCATION"])
+
 if st.button("Resolve entity", disabled=not mention.strip()):
     try:
         response = requests.post(
@@ -100,8 +110,12 @@ if st.button("Resolve entity", disabled=not mention.strip()):
         st.error(f"Entity resolution failed: {detail}")
 
 try:
-    summary = requests.get(f"{API_URL}/graph/summary", timeout=5)
-    if summary.ok:
-        st.caption(f"Knowledge graph: {summary.json().get('entities', 0)} nodes · {summary.json().get('relationships', 0)} relationships")
+    response = requests.get(f"{API_URL}/graph/summary", timeout=5)
+    if response.ok:
+        stats = response.json()
+        st.caption(
+            f"Knowledge graph: {stats.get('entities', 0)} nodes · "
+            f"{stats.get('relationships', 0)} relationships"
+        )
 except requests.RequestException:
     pass

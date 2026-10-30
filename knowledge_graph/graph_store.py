@@ -1,8 +1,4 @@
-"""Small persistent knowledge graph with entity aliases and provenance.
-
-This implementation is deliberately local-first: NetworkX stores a directed graph
-in JSON. It proposes possible entity matches but never silently rewrites source text.
-"""
+"""Persistent local knowledge graph with entity aliases and provenance."""
 from __future__ import annotations
 
 import json
@@ -32,9 +28,7 @@ class KnowledgeGraph:
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = nx.node_link_data(self.graph)
-        fd, temporary = tempfile.mkstemp(
-            prefix=self.path.name, suffix=".tmp", dir=str(self.path.parent)
-        )
+        fd, temporary = tempfile.mkstemp(prefix=self.path.name, suffix=".tmp", dir=str(self.path.parent))
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, ensure_ascii=False, indent=2)
@@ -114,23 +108,23 @@ class KnowledgeGraph:
         threshold: int = 90,
         review_threshold: int = 75,
     ) -> dict[str, Any]:
-        """Return a candidate decision, never an automatic destructive correction."""
+        """Return a candidate decision; never automatically correct source text."""
         query = (mention or "").strip()
         if not query:
             return {"status": "not_found", "mention": mention, "candidate": None}
 
         choices: dict[str, str] = {}
         for node_id, data in self.graph.nodes(data=True):
-            if data.get("entity_type") != entity_type.upper():
-                continue
-            for alias in data.get("aliases", []):
-                choices[alias] = node_id
+            if data.get("entity_type") == entity_type.upper():
+                for alias in data.get("aliases", []):
+                    choices[alias] = node_id
         if not choices:
             return {"status": "not_found", "mention": query, "candidate": None}
 
         match = process.extractOne(query, list(choices), scorer=fuzz.WRatio)
         if not match:
             return {"status": "not_found", "mention": query, "candidate": None}
+
         alias, score, _ = match
         candidate_id = choices[alias]
         candidate = self.graph.nodes[candidate_id]
@@ -140,6 +134,7 @@ class KnowledgeGraph:
             status = "needs_review"
         else:
             status = "no_confident_match"
+
         return {
             "status": status,
             "mention": query,
@@ -159,7 +154,10 @@ class KnowledgeGraph:
         return {"id": node_id, **dict(self.graph.nodes[node_id])}
 
     def summary(self) -> dict[str, int]:
-        return {"entities": self.graph.number_of_nodes(), "relationships": self.graph.number_of_edges()}
+        return {
+            "entities": self.graph.number_of_nodes(),
+            "relationships": self.graph.number_of_edges(),
+        }
 
 
 def get_knowledge_graph() -> KnowledgeGraph:
