@@ -2,13 +2,14 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+load_dotenv()
+
 from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CHROMA_DIR = Path(os.getenv("CHROMA_DIR", str(PROJECT_ROOT / "chroma_db"))).expanduser()
-
-load_dotenv()
 
 COLLECTION_NAME = "youtube_rag"
 
