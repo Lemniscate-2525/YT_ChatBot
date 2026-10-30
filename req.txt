@@ -18,3 +18,5 @@ fastapi
 uvicorn[standard]
 streamlit
 requests
+redis
+httpx
