@@ -11,7 +11,7 @@ import networkx as nx
 from rapidfuzz import fuzz, process
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_GRAPH_PATH = PROJECT_ROOT / "data" / "knowledge_graph.json"
+DEFAULT_GRAPH_PATH = Path(os.getenv("KNOWLEDGE_GRAPH_PATH", str(PROJECT_ROOT / "data" / "knowledge_graph.json"))).expanduser()
 
 
 class KnowledgeGraph:
