@@ -6,7 +6,7 @@ from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CHROMA_DIR = PROJECT_ROOT / "chroma_db"
+CHROMA_DIR = Path(os.getenv("CHROMA_DIR", str(PROJECT_ROOT / "chroma_db"))).expanduser()
 
 load_dotenv()
 
