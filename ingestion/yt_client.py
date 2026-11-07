@@ -106,15 +106,18 @@ class YouTubeTranscriptClient:
         from config import settings
 
         self.enable_audio_fallback = enable_audio_fallback
-        self.proxy_username = (
-            proxy_username or getattr(settings, "WEBSHARE_PROXY_USERNAME", "") or ""
-        ).strip()
-        self.proxy_password = (
-            proxy_password or getattr(settings, "WEBSHARE_PROXY_PASSWORD", "") or ""
-        ).strip()
-        self.proxy_url = (
-            proxy_url or getattr(settings, "PROXY_URL", "") or ""
-        ).strip()
+        if proxy_url:
+            self.proxy_url = proxy_url.strip()
+            self.proxy_username = (proxy_username or "").strip()
+            self.proxy_password = (proxy_password or "").strip()
+        else:
+            self.proxy_url = (getattr(settings, "PROXY_URL", "") or "").strip()
+            self.proxy_username = (
+                proxy_username or getattr(settings, "WEBSHARE_PROXY_USERNAME", "") or ""
+            ).strip()
+            self.proxy_password = (
+                proxy_password or getattr(settings, "WEBSHARE_PROXY_PASSWORD", "") or ""
+            ).strip()
 
         proxy_config = None
         self._effective_proxy_url = None
@@ -174,27 +177,52 @@ class YouTubeTranscriptClient:
             "max_filesize": 25 * 1024 * 1024,
             "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
         }
-        if self._effective_proxy_url:
-            ydl_opts["proxy"] = self._effective_proxy_url
-            logger.info("Using proxy for yt-dlp audio download.")
 
-        filename = None
-        try:
-            logger.info("Starting yt-dlp audio download for Groq Whisper transcription: %s", video_url)
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        def _try_download(proxy_url: str | None) -> str | None:
+            opts = dict(ydl_opts)
+            if proxy_url:
+                opts["proxy"] = proxy_url
+            else:
+                opts.pop("proxy", None)
+            with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(video_url, download=True)
-                filename = info.get("_filename") or ydl.prepare_filename(info)
-
-            if not filename or not os.path.exists(filename):
-                # Search temp directory for matching prefix if path slightly differs
+                path = info.get("_filename") or ydl.prepare_filename(info)
+                if path and os.path.exists(path):
+                    return path
                 base_prefix = f"yt_audio_{ts}_"
                 for entry in os.listdir(temp_dir):
                     if entry.startswith(base_prefix):
-                        filename = os.path.join(temp_dir, entry)
-                        break
+                        return os.path.join(temp_dir, entry)
+            return None
+
+        filename = None
+        download_err = None
+        try:
+            logger.info("Starting yt-dlp audio download for Groq Whisper transcription: %s", video_url)
+            # Try with proxy first if configured
+            if self._effective_proxy_url:
+                try:
+                    filename = _try_download(self._effective_proxy_url)
+                except Exception as pe:
+                    logger.warning(
+                        "yt-dlp download failed through proxy (%s). Attempting direct download fallback.",
+                        pe,
+                    )
+                    download_err = pe
+
+            # If proxy wasn't configured or proxy download failed, try direct download
+            if not filename or not os.path.exists(filename):
+                try:
+                    filename = _try_download(None)
+                except Exception as de:
+                    logger.warning("yt-dlp direct download failed: %s", de)
+                    if not download_err:
+                        download_err = de
 
             if not filename or not os.path.exists(filename):
-                raise TranscriptError("yt-dlp completed but the audio output file was not found.")
+                raise TranscriptError(
+                    f"yt-dlp audio download failed across proxy and direct attempts: {download_err}"
+                )
 
             logger.info("Transcribing audio with Groq Whisper Large v3: %s", filename)
             client = Groq(api_key=api_key)

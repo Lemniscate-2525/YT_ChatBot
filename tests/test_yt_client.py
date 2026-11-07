@@ -281,6 +281,8 @@ def test_webshare_proxy_initialization():
 def test_generic_proxy_initialization():
     client = YouTubeTranscriptClient(
         proxy_url="http://proxy.example.com:8080",
+        proxy_username="",
+        proxy_password="",
     )
     assert client.proxy_url == "http://proxy.example.com:8080"
     assert client._effective_proxy_url == "http://proxy.example.com:8080"
