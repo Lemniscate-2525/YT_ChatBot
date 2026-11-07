@@ -11,11 +11,27 @@ st.set_page_config(page_title="YouTube RAG Assistant", page_icon="🎥", layout=
 if "session_id" not in st.session_state:
     st.session_state["session_id"] = uuid.uuid4().hex[:16]
 
-API_URL = os.getenv("RAG_API_URL", "http://localhost:8000").rstrip("/")
+# Backend configuration
 try:
-    API_KEY = st.secrets.get("RAG_API_KEY", os.getenv("RAG_API_KEY", ""))
+    API_URL = (
+        st.secrets.get("RAG_API_URL")
+        or os.getenv("RAG_API_URL")
+        or "http://localhost:8000"
+    ).rstrip("/")
+
+    API_KEY = (
+        st.secrets.get("RAG_API_KEY")
+        or os.getenv("RAG_API_KEY")
+        or ""
+    ).strip()
+
 except Exception:
-    API_KEY = os.getenv("RAG_API_KEY", "")
+    API_URL = os.getenv(
+        "RAG_API_URL", "http://localhost:8000"
+    ).rstrip("/")
+
+    API_KEY = os.getenv("RAG_API_KEY", "").strip()
+
 
 
 def api_headers() -> dict[str, str]:
