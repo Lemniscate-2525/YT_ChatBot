@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 
+from config import settings
 from security.input_validation import validate_query
 from security.prompt_security import detect_prompt_injection
 from security.guardrails import validate_answer
@@ -63,8 +64,9 @@ Answer:
 @lru_cache(maxsize=1)
 def _get_runtime():
     """Initialize expensive/provider-dependent resources on first inference."""
-    if not os.getenv("GROQ_API_KEY"):
-        raise ValueError("Set GROQ_API_KEY in your .env file.")
+    groq_key = settings.GROQ_API_KEY
+    if not groq_key:
+        raise ValueError("Set GROQ_API_KEY in your environment.")
     vector_store = get_vector_store()
     if vector_store._collection.count() == 0:
         raise RuntimeError(
@@ -74,7 +76,11 @@ def _get_runtime():
         search_type="similarity",
         search_kwargs={"k": 5},
     )
-    llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0)
+    llm = ChatGroq(
+        model=settings.GROQ_MODEL,
+        temperature=0,
+        api_key=groq_key,
+    )
     return retriever, llm
 
 

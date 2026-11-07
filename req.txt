@@ -20,3 +20,4 @@ streamlit
 requests
 redis
 httpx
+fakeredis[lua]
