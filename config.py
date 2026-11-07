@@ -26,6 +26,11 @@ class Settings:
     USER_LIMIT: int = int(os.getenv("USER_LIMIT", "10"))
     RATE_LIMIT_WINDOW: int = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
 
+    # Proxy Configuration (Optional Webshare / Rotating Residential)
+    WEBSHARE_PROXY_USERNAME: str = os.getenv("WEBSHARE_PROXY_USERNAME", "")
+    WEBSHARE_PROXY_PASSWORD: str = os.getenv("WEBSHARE_PROXY_PASSWORD", "")
+    PROXY_URL: str = os.getenv("PROXY_URL", "")
+
     # Security & API
     RAG_API_KEY: str = os.getenv("RAG_API_KEY", "")
     ENABLE_API_DOCS: bool = os.getenv("ENABLE_API_DOCS", "false").lower() in ("true", "1", "yes")

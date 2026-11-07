@@ -265,6 +265,28 @@ def test_audio_fallback_can_be_disabled():
     print("PASS: Audio fallback can be disabled")
 
 
+def test_webshare_proxy_initialization():
+    client = YouTubeTranscriptClient(
+        proxy_username="test_user",
+        proxy_password="test_pass",
+    )
+    assert client.proxy_username == "test_user"
+    assert client.proxy_password == "test_pass"
+    assert client._effective_proxy_url is not None
+    assert "test_user" in client._effective_proxy_url
+    assert "p.webshare.io" in client._effective_proxy_url
+    print("PASS: Webshare rotating proxy initializes correctly")
+
+
+def test_generic_proxy_initialization():
+    client = YouTubeTranscriptClient(
+        proxy_url="http://proxy.example.com:8080",
+    )
+    assert client.proxy_url == "http://proxy.example.com:8080"
+    assert client._effective_proxy_url == "http://proxy.example.com:8080"
+    print("PASS: Generic proxy initializes correctly")
+
+
 if __name__ == "__main__":
     test_retries_then_succeeds()
     test_stops_after_three_attempts()

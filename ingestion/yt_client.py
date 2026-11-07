@@ -94,11 +94,59 @@ def _wait_before_retry(attempt: int) -> None:
 
 
 class YouTubeTranscriptClient:
-    """Fetch timestamped transcripts from YouTube with audio transcription fallback."""
+    """Fetch timestamped transcripts from YouTube with audio transcription and proxy fallback."""
 
-    def __init__(self, enable_audio_fallback: bool = True):
-        self._api = YouTubeTranscriptApi()
+    def __init__(
+        self,
+        enable_audio_fallback: bool = True,
+        proxy_username: str | None = None,
+        proxy_password: str | None = None,
+        proxy_url: str | None = None,
+    ):
+        from config import settings
+
         self.enable_audio_fallback = enable_audio_fallback
+        self.proxy_username = (
+            proxy_username or getattr(settings, "WEBSHARE_PROXY_USERNAME", "") or ""
+        ).strip()
+        self.proxy_password = (
+            proxy_password or getattr(settings, "WEBSHARE_PROXY_PASSWORD", "") or ""
+        ).strip()
+        self.proxy_url = (
+            proxy_url or getattr(settings, "PROXY_URL", "") or ""
+        ).strip()
+
+        proxy_config = None
+        self._effective_proxy_url = None
+
+        if self.proxy_username and self.proxy_password:
+            try:
+                from youtube_transcript_api.proxies import WebshareProxyConfig
+                proxy_config = WebshareProxyConfig(
+                    proxy_username=self.proxy_username,
+                    proxy_password=self.proxy_password,
+                )
+                req_dict = proxy_config.to_requests_dict()
+                self._effective_proxy_url = req_dict.get("https") or req_dict.get("http")
+                logger.info("Configured Webshare rotating residential proxy for YouTube requests.")
+            except Exception as e:
+                logger.warning("Failed to initialize WebshareProxyConfig: %s", e)
+        elif self.proxy_url:
+            try:
+                from youtube_transcript_api.proxies import GenericProxyConfig
+                proxy_config = GenericProxyConfig(
+                    http_url=self.proxy_url,
+                    https_url=self.proxy_url,
+                )
+                self._effective_proxy_url = self.proxy_url
+                logger.info("Configured generic proxy for YouTube requests.")
+            except Exception as e:
+                logger.warning("Failed to initialize GenericProxyConfig: %s", e)
+
+        if proxy_config is not None:
+            self._api = YouTubeTranscriptApi(proxy_config=proxy_config)
+        else:
+            self._api = YouTubeTranscriptApi()
 
     def _transcribe_audio_with_groq(self, video_url: str) -> list[dict]:
         """Fallback: download audio with yt-dlp and transcribe using Groq Whisper Large v3."""
@@ -124,7 +172,11 @@ class YouTubeTranscriptClient:
             "noplaylist": True,
             "no_warnings": True,
             "max_filesize": 25 * 1024 * 1024,
+            "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
         }
+        if self._effective_proxy_url:
+            ydl_opts["proxy"] = self._effective_proxy_url
+            logger.info("Using proxy for yt-dlp audio download.")
 
         filename = None
         try:
