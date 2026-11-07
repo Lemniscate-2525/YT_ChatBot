@@ -3,6 +3,7 @@ langchain-text-splitters
 langchain-chroma
 langchain-google-genai
 langchain-groq
+groq
 langsmith
 youtube-transcript-api
 yt-dlp

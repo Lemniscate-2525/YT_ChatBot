@@ -32,3 +32,10 @@ desktop.ini
 # Local knowledge graph and Streamlit secrets
 data/knowledge_graph.json
 .streamlit/secrets.toml
+
+# Nested clones or audio scratch
+YT_ChatBot/
+*.mp3
+*.m4a
+*.webm
+*.wav

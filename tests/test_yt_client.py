@@ -215,6 +215,56 @@ def test_permanent_transcript_failure_is_not_retried():  # Perm failure like may
     print("PASS: Disabled transcript fails without retrying")
 
 
+def test_audio_fallback_succeeds_when_api_fails():
+    client = YouTubeTranscriptClient()
+    client._api = Mock()
+    client._api.fetch.side_effect = TranscriptsDisabled("xhTXq26dwoA")
+
+    fallback_segments = [{"text": "Groq Whisper fallback text", "start": 1.5, "duration": 3.0}]
+    client._transcribe_audio_with_groq = Mock(return_value=fallback_segments)
+
+    segments = client.fetch_transcript("https://youtu.be/xhTXq26dwoA")
+    assert segments == fallback_segments
+    client._transcribe_audio_with_groq.assert_called_once_with("https://youtu.be/xhTXq26dwoA")
+    print("PASS: Audio fallback succeeds when transcript API fails")
+
+
+def test_audio_fallback_failure_raises_informative_error():
+    client = YouTubeTranscriptClient()
+    client._api = Mock()
+    client._api.fetch.side_effect = TranscriptsDisabled("xhTXq26dwoA")
+
+    client._transcribe_audio_with_groq = Mock(
+        side_effect=TranscriptError("Whisper failed to process audio")
+    )
+
+    try:
+        client.fetch_transcript("https://youtu.be/xhTXq26dwoA")
+    except TranscriptError as exc:
+        assert "Whisper failed to process audio" in str(exc)
+        print("PASS: Informative error raised on audio fallback failure")
+    else:
+        raise AssertionError("Expected TranscriptError")
+
+
+def test_audio_fallback_can_be_disabled():
+    client = YouTubeTranscriptClient(enable_audio_fallback=False)
+    client._api = Mock()
+    client._api.fetch.side_effect = TranscriptsDisabled("xhTXq26dwoA")
+
+    client._transcribe_audio_with_groq = Mock()
+
+    try:
+        client.fetch_transcript("https://youtu.be/xhTXq26dwoA")
+    except TranscriptError:
+        pass
+    else:
+        raise AssertionError("Expected TranscriptError")
+
+    client._transcribe_audio_with_groq.assert_not_called()
+    print("PASS: Audio fallback can be disabled")
+
+
 if __name__ == "__main__":
     test_retries_then_succeeds()
     test_stops_after_three_attempts()
@@ -226,3 +276,6 @@ if __name__ == "__main__":
     test_invalid_url_does_not_call_api()
     test_empty_transcript_fails_immediately()
     test_permanent_transcript_failure_is_not_retried()
+    test_audio_fallback_succeeds_when_api_fails()
+    test_audio_fallback_failure_raises_informative_error()
+    test_audio_fallback_can_be_disabled()
