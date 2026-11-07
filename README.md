@@ -1,76 +1,135 @@
-# 🎥 YouTube RAG Assistant — Production System
+# 🎥 YouTube RAG Assistant
 
-A hardened, containerized, and verifiable YouTube transcript Retrieval-Augmented Generation (RAG) system with timestamped citations, Redis-backed sliding-window rate limiting, entity knowledge graph cross-referencing, an authenticated FastAPI backend, and an interactive Streamlit frontend.
+A production-grade, containerized YouTube transcript Retrieval-Augmented Generation (RAG) system featuring timestamped citations, Redis-backed sliding-window rate limiting, entity knowledge graph cross-referencing, an authenticated FastAPI backend, and an interactive Streamlit frontend.
 
 ---
 
-## 1. Architecture
+## Architecture Overview
 
-```text
-┌─────────────────────────────────┐
-│ Streamlit Frontend (app.py)     │  (Port 8501)
-│ Session-aware, user-facing UI   │
-└────────────────┬────────────────┘
-                 │
-                 │ HTTP (X-API-Key + X-Session-ID)
-                 ▼
-┌─────────────────────────────────────────────────────────────┐
-│ FastAPI Backend (api/main.py)                      (Port 8000)
-│                                                             │
-│  ├── Security: Constant-time Auth, Prompt Injection Filter, │
-│  │             Output Guardrails, CORS Middleware           │
-│  ├── Health: Liveness (/health) & Readiness (/ready)        │
-│  ├── Rate Limiter: Redis Sliding Window (Atomic Lua Script) │
-│  ├── Knowledge Graph: NetworkX + RapidFuzz Resolution       │
-│  └── Ingestion: YouTube Transcript API with Jittered Retry  │
-└──────────────┬──────────────────────────────┬───────────────┘
-               │                              │
-               ▼                              ▼
-┌─────────────────────────────┐  ┌────────────────────────────┐
-│ Vector Store (ChromaDB)     │  │ LLM Inference              │
-│ Embeddings:                 │  │ Groq (openai/gpt-oss-20b)  │
-│ gemini-embedding-001        │  │ Grounded Prompting         │
-└─────────────────────────────┘  └────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Client["Presentation Layer"]
+        UI["Streamlit Frontend<br/>(app.py :8501)"]
+    end
+
+    subgraph Gateway["API Gateway & Security (FastAPI :8000)"]
+        Auth["HMAC Timing-Safe Auth<br/>(X-API-Key + X-Session-ID)"]
+        Guard["Input Sanitizer &<br/>Prompt Injection Filter"]
+        RateLimit["Rate Limiter Engine<br/>(Sliding Window)"]
+        Health["Health Probes<br/>(/health & /ready)"]
+    end
+
+    subgraph CacheStore["Data & State Infrastructure"]
+        Redis[("Redis 7 / Upstash<br/>(Atomic Lua Script)")]
+        Chroma[("ChromaDB Vector Store<br/>(Local / Persistent)")]
+        KG[("NetworkX Graph Store<br/>(knowledge_graph.json)")]
+    end
+
+    subgraph AIProviders["External AI Services"]
+        Gemini["Google Generative AI<br/>(gemini-embedding-001)"]
+        Groq["Groq Cloud LLM<br/>(openai/gpt-oss-20b)"]
+        YT["YouTube Transcript API<br/>(Captions with Jittered Retry)"]
+    end
+
+    UI -->|"HTTP + Auth Headers"| Auth
+    Auth --> Guard
+    Guard --> RateLimit
+    RateLimit -->|"Atomic Check"| Redis
+    
+    RateLimit -->|"Vector Query"| Chroma
+    RateLimit -->|"Ingest URL"| YT
+    YT -->|"Cleaned Chunks"| Gemini
+    Gemini -->|"3072d Vectors"| Chroma
+
+    Chroma -->|"Retrieved Passages"| KG
+    KG -->|"Entity Disambiguation"| Groq
+    Groq -->|"Answer Synthesis"| UI
 ```
 
 ---
 
-## 2. Core Features
+## End-to-End Request Lifecycle
 
-- **Timestamped Evidence Citations**: Every generated claim links directly to the exact second in the source YouTube video.
-- **Service-to-Service API Key Auth**: All operational endpoints are gated by constant-time `hmac.compare_digest` against `RAG_API_KEY`.
-- **Session-Aware Rate Limiting**: The Streamlit client transmits an isolated `X-Session-ID`, ensuring per-user quotas (10 requests/min) are enforced alongside global system limits (100 requests/min).
-- **Prompt Injection Defense**: High-recall heuristic regex and token pattern defenses reject malicious system-prompt override attempts.
-- **Atomic Rate Limiter with Circuit Breaker**: Powered by Redis sliding-window Lua scripts. Gracefully raises structured `503 Service Unavailable` if Redis goes offline rather than leaking raw connection exceptions.
-- **Reviewed Knowledge Graph**: NetworkX entity store with RapidFuzz similarity ranking. Flags ambiguous transcript spellings for manual human review without blindly autocorrecting source text.
-- **Containerized & Reproducible**: Fully orchestrated via Docker and Docker Compose with health checks and non-root execution.
-- **Zero-Cost Deployment Target**: Configured for ₹0 / $0 monthly hosting across free-tier providers.
+The diagram below traces a user query from the moment it is entered in the browser to the final timestamped response:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User / Browser
+    participant UI as Streamlit UI (app.py)
+    participant API as FastAPI Backend (api/main.py)
+    participant Redis as Redis Rate Limiter
+    participant Chroma as ChromaDB Vector Store
+    participant KG as Knowledge Graph
+    participant LLM as Groq (LLM Inference)
+
+    User->>UI: Enters query ("What is the return on focus?")
+    UI->>API: POST /ask (Headers: X-API-Key, X-Session-ID)
+    
+    Note over API: 1. Constant-time API key verification<br/>2. Query length check & prompt injection defense
+    
+    API->>Redis: Execute atomic sliding-window Lua script
+    alt Quota Exceeded
+        Redis-->>API: Rejected (limit reached)
+        API-->>UI: HTTP 429 Too Many Requests
+        UI-->>User: Display rate-limit wait banner
+    else Quota Available
+        Redis-->>API: Allowed (counter incremented)
+        
+        API->>Chroma: Vector similarity search (top-5 chunks)
+        Chroma-->>API: Return passages with start timestamps & video IDs
+        
+        API->>KG: Cross-reference extracted entities against verified graph
+        KG-->>API: Provide disambiguation context (without silent autocorrect)
+        
+        API->>LLM: Dispatch grounded prompt (Context + Entity Checks + Question)
+        LLM-->>API: Stream answer referencing transcript timestamps
+        
+        Note over API: Validate output bounds & guardrails
+        
+        API-->>UI: HTTP 200 OK (JSON payload: answer + source citations)
+        UI-->>User: Render response with clickable YouTube timestamp links
+    end
+```
 
 ---
 
-## 3. Technology Stack
+## Key Highlights
 
-| Layer | Component | Description |
+- **Timestamped Direct Citations**: Every generated fact links directly to the exact second in the source video (`?t=515s`), enabling instant human verification.
+- **Timing-Safe Service Authentication**: All operational endpoints enforce constant-time `hmac.compare_digest` validation on the `X-API-Key` header.
+- **Session-Aware Rate Limiting**: The client automatically tags requests with an isolated session identifier (`X-Session-ID`), enforcing per-user quotas (10 requests/min) alongside global infrastructure protection (100 requests/min).
+- **Hardened Prompt Security**: Token-level patterns and regex heuristics reject prompt injection vectors (`[INST]`, `<system>`, `DAN mode`, `jailbreak`) before hitting the LLM.
+- **Atomic Sliding Window with Fail-Safe**: Redis rate limiting runs inside an atomic Lua script. If Redis disconnects, the API responds with a structured HTTP 503 instead of crashing with an unhandled 500 error.
+- **Entity Knowledge Graph**: NetworkX graph store paired with RapidFuzz string scoring. Resolves spoken transcript variations against reviewed canonical entities while preserving provenance.
+- **Production Containerization**: Multi-stage, non-root `Dockerfile` and a 3-service `docker-compose.yml` for turnkey reproducibility.
+- **Zero-Cost Hosting Architecture**: Engineered to operate cleanly inside free-tier allowances ($0 / month).
+
+---
+
+## Technical Stack
+
+| Layer | Technology | Role |
 |---|---|---|
-| **Frontend** | Streamlit 1.66+ | Web interface for ingestion, queries, and graph exploration |
-| **Backend API** | FastAPI + Uvicorn | High-throughput asynchronous REST API |
-| **Embeddings** | Google Generative AI | `gemini-embedding-001` (3072-dimensional vectors) |
-| **Vector Database** | ChromaDB 1.5+ | Local persistent vector index partitioned by video ID |
-| **LLM Provider** | Groq Cloud | `openai/gpt-oss-20b` (low-latency grounded generation) |
-| **Rate Limiter** | Redis 7 + Lua | Distributed atomic sliding-window rate limiting |
-| **Graph Store** | NetworkX + RapidFuzz | Entity-relationship graph with alias cross-referencing |
-| **Testing** | Pytest + FakeRedis | 65 automated tests with offline mocking & live CI verification |
+| **Frontend** | Streamlit 1.66+ | Session-managed web interface |
+| **Backend API** | FastAPI + Uvicorn | Asynchronous REST gateway |
+| **Embeddings** | Google Generative AI | `gemini-embedding-001` (3072 dimensions) |
+| **Vector Store** | ChromaDB 1.5+ | Local persistent vector index |
+| **Language Model** | Groq Cloud | `openai/gpt-oss-20b` (low-latency grounded generation) |
+| **Rate Limiter** | Redis 7 + Lua | Distributed atomic sliding-window engine |
+| **Graph Store** | NetworkX + RapidFuzz | Entity cross-referencing and alias matching |
+| **Test Double** | FakeRedis [Lua] | Offline unit and integration test execution |
 
 ---
 
-## 4. Repository Structure
+## System Components
 
 ```text
 ├── api/
-│   ├── main.py                   # FastAPI REST service & route handlers
+│   ├── main.py                   # FastAPI REST service and route handlers
 │   └── __init__.py
 ├── config.py                     # Centralized settings and environment validation
-├── exceptions.py                 # Structured domain exception hierarchy
+├── exceptions.py                 # Domain exception hierarchy
 ├── logging_config.py             # Formatted application logger
 ├── rag.py                        # RAG pipeline, prompt assembly, and inference
 ├── app.py                        # Streamlit interactive UI
@@ -96,161 +155,114 @@ A hardened, containerized, and verifiable YouTube transcript Retrieval-Augmented
 
 ---
 
-## 5. Local Setup & Quickstart
+## Quickstart
 
-### Option A: Running with Docker Compose (Recommended)
+### Running with Docker Compose
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/Lemniscate-2525/YT_ChatBot.git
-   cd YT_ChatBot
-   ```
+The easiest way to start the entire authenticated stack locally:
 
-2. **Configure environment variables**:
-   ```bash
-   cp .env.example .env
-   ```
-   Add your `GEMINI_API_KEY` and `GROQ_API_KEY`.
+```bash
+# 1. Clone the repository
+git clone https://github.com/Lemniscate-2525/YT_ChatBot.git
+cd YT_ChatBot
 
-3. **Start all services**:
-   ```bash
-   docker compose up --build
-   ```
+# 2. Configure keys
+cp .env.example .env
+# Edit .env and insert your GEMINI_API_KEY and GROQ_API_KEY
 
-4. **Access the application**:
-   - Streamlit UI: [http://localhost:8501](http://localhost:8501)
-   - FastAPI Health Check: [http://localhost:8000/health](http://localhost:8000/health)
-   - FastAPI Readiness Check: [http://localhost:8000/ready](http://localhost:8000/ready)
-
----
-
-### Option B: Running Locally (Native Python)
-
-Requires Python 3.11 or 3.12.
-
-1. **Create and activate a virtual environment**:
-   ```powershell
-   python -m venv .venv
-   .venv\Scripts\Activate.ps1
-   ```
-
-2. **Install dependencies**:
-   ```powershell
-   python -m pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment**:
-   Copy `.env.example` to `.env` and populate your API keys.
-
-4. **Start the API**:
-   ```powershell
-   uvicorn api.main:app --reload --port 8000
-   ```
-
-5. **Start the Frontend**:
-   ```powershell
-   streamlit run app.py
-   ```
-
----
-
-## 6. Environment Variables
-
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `GEMINI_API_KEY` | **Yes** | — | Google AI Studio key for `gemini-embedding-001` |
-| `GROQ_API_KEY` | **Yes** | — | Groq API key for LLM generation |
-| `RAG_API_KEY` | **Yes** | — | Shared secret for backend API authentication |
-| `REDIS_URL` | No | `redis://localhost:6379/0` | Redis connection URL |
-| `REDIS_TIMEOUT` | No | `2.0` | Socket connect and read timeout in seconds |
-| `GLOBAL_LIMIT` | No | `100` | Maximum system requests per sliding window |
-| `USER_LIMIT` | No | `10` | Maximum requests per session/user per window |
-| `RATE_LIMIT_WINDOW`| No | `60` | Window size in seconds |
-| `CHROMA_DIR` | No | `chroma_db` | Persistent vector store path |
-| `KNOWLEDGE_GRAPH_PATH` | No | `data/knowledge_graph.json` | JSON path for entity graph |
-| `ENABLE_API_DOCS` | No | `false` | Enables `/docs` OpenAPI UI (set `true` for local dev) |
-| `CORS_ORIGINS` | No | `*` | Allowed CORS origins (comma-separated) |
-| `RAG_API_URL` | No | `http://localhost:8000` | Streamlit backend URL target |
-
----
-
-## 7. API Reference
-
-All endpoints except `GET /health` and `GET /ready` require the `X-API-Key` header. Clients can optionally pass `X-Session-ID` to track rate limits per user session.
-
-### Endpoints
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| `GET` | `/health` | Public | Liveness probe (returns 200 OK) |
-| `GET` | `/ready` | Public | Readiness probe (validates Redis, storage, auth config) |
-| `POST` | `/ingest` | Required | Fetches transcript, chunks, embeds, and indexes video |
-| `POST` | `/ask` | Required | Executes query validation, retrieval, and grounded inference |
-| `POST` | `/entities/register` | Required | Registers reviewed canonical entity and aliases |
-| `POST` | `/entities/resolve` | Required | Performs fuzzy candidate matching against known entities |
-| `GET` | `/graph/summary` | Required | Returns graph entity and relation statistics |
-
----
-
-## 8. Free-First Cloud Deployment (₹0 / $0 Cost)
-
-The recommended production deployment runs entirely within permanent free allowances:
-
-```text
-┌─────────────────────────────────┐
-│ Streamlit Community Cloud       │  100% Free
-│ Hosts app.py                    │  (Free public HTTPS, secrets management)
-└────────────────┬────────────────┘
-                 │
-                 │ Public HTTPS + X-API-Key
-                 ▼
-┌─────────────────────────────────┐
-│ Render Web Service (Free Tier)  │  100% Free
-│ Hosts api.main:app              │  (Free 750 hrs/month, automatic HTTPS)
-└────────────────┬────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ Upstash Serverless Redis        │  100% Free
-│ Distributed rate limiting       │  (10,000 commands/day free allowance)
-└─────────────────────────────────┘
+# 3. Spin up all services
+docker compose up --build
 ```
 
-### Step 1: Deploy Redis (Upstash)
-1. Sign up at [upstash.com](https://upstash.com) (free tier, no credit card required).
-2. Create a serverless Redis database.
-3. Copy the `rediss://...` connection string.
-
-### Step 2: Deploy Backend (Render)
-1. Push this repository to GitHub.
-2. In Render, select **New → Blueprint** and link this repository (`render.yaml`).
-3. Set your environment variables in Render:
-   - `GEMINI_API_KEY`: Your Google AI Studio API key.
-   - `GROQ_API_KEY`: Your Groq API key.
-   - `REDIS_URL`: The Upstash connection string.
-   - `RAG_API_KEY`: Auto-generated or configured strong secret.
-4. Deploy the service. Once active, verify `https://YOUR-APP.onrender.com/health`.
-
-### Step 3: Deploy Frontend (Streamlit Community Cloud)
-1. Sign up at [share.streamlit.io](https://share.streamlit.io).
-2. Connect your GitHub repository and select `app.py` as the main entry point.
-3. In **App settings → Secrets**, paste:
-   ```toml
-   RAG_API_URL = "https://YOUR-APP.onrender.com"
-   RAG_API_KEY = "the-same-secret-used-in-Render"
-   ```
-4. Deploy! Your app is now publicly accessible at zero infrastructure cost.
+Endpoints available immediately:
+- **Streamlit Web App**: http://localhost:8501
+- **API Liveness Probe**: http://localhost:8000/health
+- **API Readiness Probe**: http://localhost:8000/ready
 
 ---
 
-## 9. Testing & Quality Assurance
+### Running Natively
 
-The test suite contains 65 automated tests covering authentication, contracts, ingestion, vector store integration, knowledge graph resolution, rate limiting, and prompt security.
+If you prefer running without Docker:
 
-Run all tests:
 ```powershell
+# 1. Prepare virtual environment
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+# 2. Environment configuration
+cp .env.example .env
+
+# 3. Launch FastAPI backend (Terminal 1)
+uvicorn api.main:app --reload --port 8000
+
+# 4. Launch Streamlit UI (Terminal 2)
+streamlit run app.py
+```
+
+---
+
+## Configuration Reference
+
+All application parameters are consolidated and validated in `config.py`:
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Yes | None | Google AI Studio key for `gemini-embedding-001` |
+| `GROQ_API_KEY` | Yes | None | Groq API key for LLM generation |
+| `RAG_API_KEY` | Yes | None | Secret shared between frontend and API gateway |
+| `REDIS_URL` | No | `redis://localhost:6379/0` | Redis instance connection URI |
+| `REDIS_TIMEOUT` | No | `2.0` | Socket connect and read timeout in seconds |
+| `GLOBAL_LIMIT` | No | `100` | Max system requests per rate-limit window |
+| `USER_LIMIT` | No | `10` | Max requests per session per rate-limit window |
+| `RATE_LIMIT_WINDOW`| No | `60` | Duration of sliding window in seconds |
+| `CHROMA_DIR` | No | `chroma_db` | Storage path for Chroma vector files |
+| `KNOWLEDGE_GRAPH_PATH` | No | `data/knowledge_graph.json` | Path for persisted entity graph |
+| `ENABLE_API_DOCS` | No | `false` | Enables `/docs` interactive Swagger UI |
+| `CORS_ORIGINS` | No | `*` | Allowed CORS origins (comma-separated) |
+| `RAG_API_URL` | No | `http://localhost:8000` | Target backend URL used by Streamlit |
+
+---
+
+## API Specification
+
+All data endpoints require the `X-API-Key` header. Clients can optionally pass `X-Session-ID` to isolate user rate limits.
+
+| Method | Route | Access | Function |
+|---|---|---|---|
+| `GET` | `/health` | Public | Liveness probe returning operational state |
+| `GET` | `/ready` | Public | Readiness probe verifying storage and Redis health |
+| `POST` | `/ingest` | Protected | Ingests, chunks, embeds, and indexes a YouTube video |
+| `POST` | `/ask` | Protected | Performs validated retrieval and grounded RAG answer synthesis |
+| `POST` | `/entities/register` | Protected | Registers human-reviewed canonical entities and aliases |
+| `POST` | `/entities/resolve` | Protected | Matches input mentions against graph aliases using fuzzy scoring |
+| `GET` | `/graph/summary` | Protected | Returns entity, video, and relationship node counts |
+
+---
+
+## Zero-Cost Cloud Deployment
+
+This system is configured to run at zero monthly cost using free allowances across modern cloud services:
+
+```text
+Streamlit Community Cloud (Frontend)   -->   Render Web Service Free (API)   -->   Upstash Redis (Serverless)
+       [100% Free Tier]                              [750 Free Hours/mo]                [10,000 Commands/day]
+```
+
+1. **Redis Layer (Upstash)**: Create a free serverless Redis database at upstash.com without credit card requirements. Copy the connection URL (`rediss://...`).
+2. **Backend Gateway (Render)**: Deploy using the repository's `render.yaml` blueprint configured for `plan: free`. Provide `GEMINI_API_KEY`, `GROQ_API_KEY`, `REDIS_URL`, and `RAG_API_KEY` in environment settings.
+3. **Frontend Application (Streamlit Cloud)**: Deploy `app.py` via share.streamlit.io. In App Settings -> Secrets, configure `RAG_API_URL` pointing to your Render service and the matching `RAG_API_KEY`.
+
+---
+
+## Test Suite & Verification
+
+The codebase includes 65 automated tests verifying authentication contracts, schema validation, chunking determinism, offline vector storage, graph resolution, sliding-window rate limiting, and prompt security:
+
+```bash
 python -m pytest tests/ -v
 ```
 
-GitHub Actions automatically executes the full test suite and verifies the Docker container build on every push and pull request.
+All tests execute reliably in local offline environments (using embedded `fakeredis`) and in GitHub Actions CI (using a live Redis 7 service container and automated Docker build check).
