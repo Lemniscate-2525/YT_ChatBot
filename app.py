@@ -100,6 +100,13 @@ if submitted:
             st.error(str(exc))
         except requests.RequestException as exc:
             detail = getattr(getattr(exc, "response", None), "text", str(exc))
+            try:
+                if exc.response is not None:
+                    payload = exc.response.json()
+                    if "detail" in payload:
+                        detail = payload["detail"]
+            except Exception:
+                pass
             st.error(f"Ingestion failed: {detail}")
 
 st.divider()

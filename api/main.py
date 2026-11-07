@@ -145,7 +145,8 @@ def ingest(
         return ingest_video(str(request.video_url), refresh=request.refresh)
     except Exception as exc:
         logger.exception("Ingestion failed")
-        raise HTTPException(status_code=502, detail="Video ingestion failed.") from exc
+        error_msg = str(exc).strip() or "Video ingestion failed."
+        raise HTTPException(status_code=502, detail=error_msg) from exc
 
 
 @app.post("/ask")

@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import (
     IpBlocked,
+    NoTranscriptFound,
     RequestBlocked,
     YouTubeRequestFailed,
 )
@@ -98,25 +99,47 @@ class YouTubeTranscriptClient:
     def fetch_transcript(
         self,
         video_url: str,
-        languages: tuple[str, ...] = ("en",),
+        languages: tuple[str, ...] = ("en", "en-US", "en-GB", "en-CA", "en-IN"),
     ) -> list[dict]:
-        """Fetch timestamped transcript snippets with bounded retries."""
+        """Fetch timestamped transcript snippets with fallback language resolution and bounded retries."""
 
         video_id = extract_video_id(video_url)
         max_attempts = 3
 
         for attempt in range(1, max_attempts + 1):
             try:
-                transcript = self._api.fetch(
-                    video_id,
-                    languages=list(languages),
-                )
+                transcript = None
+                try:
+                    transcript = self._api.fetch(
+                        video_id,
+                        languages=list(languages),
+                    )
+                except NoTranscriptFound as not_found_err:
+                    # Fallback only when requested language was missing: check track list
+                    try:
+                        track_list = self._api.list(video_id)
+                        try:
+                            track = track_list.find_transcript(list(languages))
+                            candidate = track.fetch()
+                            if isinstance(candidate, (list, tuple)):
+                                transcript = candidate
+                        except Exception:
+                            for track in track_list:
+                                if getattr(track, "is_translatable", False):
+                                    candidate = track.translate("en").fetch()
+                                    if isinstance(candidate, (list, tuple)):
+                                        transcript = candidate
+                                        break
+                    except Exception:
+                        pass
+                    if transcript is None:
+                        raise not_found_err
 
                 segments = [
                     {
-                        "text": snippet.text,
-                        "start": float(snippet.start),
-                        "duration": float(snippet.duration),
+                        "text": snippet.text if hasattr(snippet, "text") else snippet.get("text", ""),
+                        "start": float(snippet.start if hasattr(snippet, "start") else snippet.get("start", 0)),
+                        "duration": float(snippet.duration if hasattr(snippet, "duration") else snippet.get("duration", 0)),
                     }
                     for snippet in transcript
                 ]
