@@ -10,8 +10,10 @@ from typing import Any
 import networkx as nx
 from rapidfuzz import fuzz, process
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_GRAPH_PATH = Path(os.getenv("KNOWLEDGE_GRAPH_PATH", str(PROJECT_ROOT / "data" / "knowledge_graph.json"))).expanduser()
+from config import settings
+
+PROJECT_ROOT = settings.PROJECT_ROOT
+DEFAULT_GRAPH_PATH = settings.KNOWLEDGE_GRAPH_PATH
 
 
 class KnowledgeGraph:
@@ -23,11 +25,12 @@ class KnowledgeGraph:
 
     def _load(self) -> None:
         payload = json.loads(self.path.read_text(encoding="utf-8"))
-        self.graph = nx.node_link_graph(payload, directed=True, multigraph=True)
+        edge_key = "edges" if "edges" in payload else "links"
+        self.graph = nx.node_link_graph(payload, directed=True, multigraph=True, edges=edge_key)
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = nx.node_link_data(self.graph)
+        payload = nx.node_link_data(self.graph, edges="edges")
         fd, temporary = tempfile.mkstemp(
             prefix=self.path.name, suffix=".tmp", dir=str(self.path.parent)
         )

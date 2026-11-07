@@ -8,23 +8,24 @@ load_dotenv()
 from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-# Use the configured environment variable when set; otherwise default to local chroma_db
-CHROMA_DIR = Path(os.getenv("CHROMA_DIR", str(PROJECT_ROOT / "chroma_db"))).expanduser()
+from config import settings
 
+PROJECT_ROOT = settings.PROJECT_ROOT
+CHROMA_DIR = settings.CHROMA_DIR
 COLLECTION_NAME = "youtube_rag"
 
 
 def get_embeddings():
     """Create the embedding model."""
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = settings.GEMINI_API_KEY
 
     if not api_key:
-        raise ValueError("Set GEMINI_API_KEY in your environment.")
+        raise ValueError("Set GEMINI_API_KEY (or GOOGLE_API_KEY) in your environment.")
 
     return GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-001"
+        model=settings.EMBEDDING_MODEL,
+        google_api_key=api_key,
     )
 
 

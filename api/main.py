@@ -7,34 +7,52 @@ import os
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
-from pydantic import BaseModel, Field, HttpUrl
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
+from config import settings
 from exceptions import (
     GuardrailViolationError,
     InvalidQueryError,
     PromptInjectionError,
     RateLimitExceededError,
+    RedisUnavailableError,
 )
+from infrastructure.rate_limiter import is_redis_available
 from ingestion.ingestion import ingest_video
+from ingestion.yt_client import extract_video_id
 from knowledge_graph.entity_verification import verify_entity_mention
 from knowledge_graph.graph_store import get_knowledge_graph
 from rag import ask_question
 
 logger = logging.getLogger(__name__)
+
 app = FastAPI(
     title="YouTube RAG API",
-    version="1.1.0",
-    docs_url="/docs" if os.getenv("ENABLE_API_DOCS", "false").lower() == "true" else None,
+    version="1.2.0",
+    docs_url="/docs" if settings.ENABLE_API_DOCS else None,
     redoc_url=None,
-    openapi_url="/openapi.json" if os.getenv("ENABLE_API_DOCS", "false").lower() == "true" else None,
+    openapi_url="/openapi.json" if settings.ENABLE_API_DOCS else None,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 API_KEY_HEADER = "X-API-Key"
+SESSION_ID_HEADER = "X-Session-ID"
 
 
-def require_api_key(x_api_key: str | None = Header(default=None, alias=API_KEY_HEADER)) -> str:
+def require_api_key(
+    x_api_key: str | None = Header(default=None, alias=API_KEY_HEADER),
+    x_session_id: str | None = Header(default=None, alias=SESSION_ID_HEADER),
+) -> str:
     """Require a server-side shared secret for all non-health endpoints."""
-    expected = os.getenv("RAG_API_KEY", "").strip()
+    expected = (os.getenv("RAG_API_KEY") or settings.RAG_API_KEY).strip()
     if not expected:
         logger.error("RAG_API_KEY is not configured")
         raise HTTPException(
@@ -47,16 +65,32 @@ def require_api_key(x_api_key: str | None = Header(default=None, alias=API_KEY_H
             detail="Invalid or missing API key.",
             headers={"WWW-Authenticate": "ApiKey"},
         )
+
+    # If the client provides a session ID, partition rate limits per session
+    if x_session_id and len(x_session_id.strip()) <= 64:
+        clean_id = "".join(c for c in x_session_id if c.isalnum() or c in "-_")
+        if clean_id:
+            return f"session:{clean_id}"
+
     return "streamlit-service"
 
 
 class AskRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=200)
+    question: str = Field(min_length=1, max_length=settings.MAX_QUERY_LENGTH)
 
 
 class IngestRequest(BaseModel):
     video_url: HttpUrl
     refresh: bool = False
+
+    @field_validator("video_url")
+    @classmethod
+    def validate_youtube_url(cls, val: HttpUrl) -> HttpUrl:
+        try:
+            extract_video_id(str(val))
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+        return val
 
 
 class EntityVerifyRequest(BaseModel):
@@ -79,6 +113,29 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "youtube-rag-api"}
 
 
+@app.get("/ready")
+def readiness() -> dict[str, Any]:
+    """Readiness check validating downstream connectivity and storage access."""
+    redis_ok = is_redis_available()
+    chroma_parent = settings.CHROMA_DIR.parent if not settings.CHROMA_DIR.exists() else settings.CHROMA_DIR
+    storage_ok = chroma_parent.exists()
+    auth_configured = bool(settings.RAG_API_KEY.strip())
+    is_ready = bool(storage_ok and auth_configured)
+
+    details = {
+        "status": "ready" if is_ready else "not_ready",
+        "redis": "connected" if redis_ok else "unreachable",
+        "storage": "accessible" if storage_ok else "inaccessible",
+        "auth_configured": auth_configured,
+    }
+    if not is_ready:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=details,
+        )
+    return details
+
+
 @app.post("/ingest")
 def ingest(
     request: IngestRequest,
@@ -88,7 +145,6 @@ def ingest(
         return ingest_video(str(request.video_url), refresh=request.refresh)
     except Exception as exc:
         logger.exception("Ingestion failed")
-        # Avoid returning provider, filesystem, or secret-related exception details.
         raise HTTPException(status_code=502, detail="Video ingestion failed.") from exc
 
 
@@ -115,6 +171,8 @@ def ask(
         return {"answer": answer, "sources": sources}
     except RateLimitExceededError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except RedisUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except (InvalidQueryError, PromptInjectionError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except GuardrailViolationError as exc:

@@ -1,0 +1,61 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-api
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_TIMEOUT=2.0
+      - CHROMA_DIR=/app/chroma_db
+      - KNOWLEDGE_GRAPH_PATH=/app/data/knowledge_graph.json
+      - RAG_API_KEY=${RAG_API_KEY:-dev-secret-key-12345}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_API_DOCS=${ENABLE_API_DOCS:-true}
+    volumes:
+      - chroma-data:/app/chroma_db
+      - kg-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-frontend
+    command: streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+    environment:
+      - RAG_API_URL=http://api:8000
+      - RAG_API_KEY=${RAG_API_KEY:-dev-secret-key-12345}
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  redis-data:
+  chroma-data:
+  kg-data:

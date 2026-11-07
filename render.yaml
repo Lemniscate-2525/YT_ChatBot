@@ -1,22 +1,19 @@
+# Render deployment blueprint - Free-tier optimized (0 cost)
 services:
   - type: web
     name: yt-chatbot-api
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r req.txt
     startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
-    disk:
-      name: yt-chatbot-data
-      mountPath: /var/data
-      sizeGB: 10
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.8
       - key: CHROMA_DIR
-        value: /var/data/chroma_db
+        value: chroma_db
       - key: KNOWLEDGE_GRAPH_PATH
-        value: /var/data/knowledge_graph.json
+        value: data/knowledge_graph.json
       - key: ENABLE_API_DOCS
         value: "false"
       - key: LOG_LEVEL
