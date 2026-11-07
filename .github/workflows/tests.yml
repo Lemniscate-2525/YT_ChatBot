@@ -2,7 +2,7 @@ name: tests
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, "feature/**", "fix/**"]
   pull_request:
     branches: [main]
 
@@ -21,11 +21,22 @@ jobs:
           --health-retries 10
     env:
       REDIS_URL: redis://localhost:6379/0
+      RAG_API_KEY: ci-test-secret-key-12345
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install --upgrade pip
-      - run: pip install -r req.txt
-      - run: python -m pytest tests/ -q
+      - name: Upgrade pip and install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r req.txt
+      - name: Run test suite
+        run: python -m pytest tests/ -v
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t yt-rag-test:latest .
