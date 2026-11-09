@@ -172,7 +172,7 @@ def generate_chunk_ids(chunks: list[Document], video_id: str) -> list[str]:
 # 6. INGESTION PIPELINE
 # --------------------------------------------------
 
-def ingest_video(video_url: str, refresh: bool = False) -> dict:
+def ingest_video(video_url: str, refresh: bool = False, transcript_segments: list[dict] | None = None) -> dict:
     """
     Fetch, clean, chunk, embed, and store a YouTube transcript.
 
@@ -199,12 +199,16 @@ def ingest_video(video_url: str, refresh: bool = False) -> dict:
             "chunks_added": 0,
         }
 
-    # Redis transcript cache avoids repeat requests to YouTube across API instances.
-    cache_key = transcript_key(video_id, "en")
-    segments = None if refresh else get_json(cache_key)
-    if segments is None:
-        segments = transcript_client.fetch_transcript(canonical_url)
-        set_json(cache_key, segments, settings.TRANSCRIPT_CACHE_TTL_SECONDS)
+    # A trusted local worker may supply already-extracted segments. Otherwise,
+    # retain the existing provider/cache path for local development and fallback.
+    if transcript_segments is not None:
+        segments = transcript_segments
+    else:
+        cache_key = transcript_key(video_id, "en")
+        segments = None if refresh else get_json(cache_key)
+        if segments is None:
+            segments = transcript_client.fetch_transcript(canonical_url)
+            set_json(cache_key, segments, settings.TRANSCRIPT_CACHE_TTL_SECONDS)
 
     chunks = create_chunks(
         segments = segments,
