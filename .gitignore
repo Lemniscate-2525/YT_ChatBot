@@ -20,8 +20,10 @@ chroma_db/
 # Logs
 *.log
 
-# Local transcript
+# Local transcript and authenticated YouTube cookies
 transcript.txt
+youtube-cookies.txt
+*.cookies.txt
 
 # IDE and OS files
 .vscode/

@@ -249,6 +249,25 @@ All data endpoints require the `X-API-Key` header. Clients can optionally pass `
 
 ---
 
+## Hybrid Local Transcript Worker
+
+YouTube may block transcript requests from cloud-provider IP ranges. The hybrid mode keeps the deployed Streamlit + FastAPI + Redis + RAG stack, while a trusted worker on your own Windows machine retrieves captions with your local YouTube cookies.
+
+**Flow:** Streamlit → FastAPI `POST /ingest/jobs` → Redis Streams → local yt-dlp worker → authenticated `POST /worker/transcripts` → existing chunking/embedding/Chroma ingestion. The browser cookies file never leaves the local worker.
+
+### Setup
+
+1. Deploy the API and configure `REDIS_URL` and a strong `TRANSCRIPT_WORKER_TOKEN` in Render. Set the same `REDIS_URL` (your hosted Redis connection string) and `TRANSCRIPT_WORKER_TOKEN` in your local `.env`.
+2. Keep `youtube-cookies.txt` in the repository root on your own PC only. It is ignored by Git. Never upload it to GitHub, Streamlit, Render, or Redis.
+3. Set `YOUTUBE_COOKIES_FILE=./youtube-cookies.txt` in local `.env`.
+4. Install dependencies with `python -m pip install -r requirements.txt`. Ensure the local `.env` also has `RAG_API_URL` set to your deployed Render API URL.
+5. Start the worker from the repository root with `python -m worker.transcript_worker`. Keep the machine awake and connected while new videos are being ingested.
+6. Submit a video in Streamlit. The UI queues the job and polls its status. Existing indexed videos and RAG question answering continue to run in the cloud.
+
+Jobs are retained for seven days, delivered through a Redis consumer group, retried up to three times, and abandoned pending deliveries are reclaimed after 60 seconds. If the local machine is offline, new jobs wait in Redis until the worker reconnects. Do not run the worker on a machine/profile that does not own or have permission to use the supplied YouTube session.
+
+The legacy `POST /ingest` route remains available for local/dev use; the Streamlit UI uses the worker-backed queue route.
+
 ## Zero-Cost Cloud Deployment
 
 This system is configured to run at zero monthly cost using free allowances across modern cloud services:
