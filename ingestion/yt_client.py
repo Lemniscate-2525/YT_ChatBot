@@ -2,7 +2,15 @@ import logging
 import random
 import re
 import time
+from threading import Lock
 from urllib.parse import parse_qs, urlparse
+
+from requests.exceptions import (
+    ConnectTimeout,
+    ProxyError,
+    ReadTimeout,
+    RetryError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,15 +22,15 @@ from youtube_transcript_api._errors import (
     YouTubeRequestFailed,
 )
 
+
 class TranscriptError(Exception):
     """Raised when a YouTube transcript cannot be retrieved."""
 
 
 def extract_video_id(video_url: str) -> str:
     """Validate a YouTube URL and extract its video ID."""
-
-    if not isinstance(video_url, str) or not video_url.strip(): # Input Validation. Strips Whitespaces
-        raise ValueError("A YouTube URL is required.")  # Condition is true for either case, if stripped string is empty or if input ain't a string.
+    if not isinstance(video_url, str) or not video_url.strip():
+        raise ValueError("A YouTube URL is required.")
 
     parsed = urlparse(video_url.strip())
     hostname = (parsed.hostname or "").lower()
@@ -30,82 +38,108 @@ def extract_video_id(video_url: str) -> str:
     if hostname in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
         if parsed.path == "/watch":
             video_id = parse_qs(parsed.query).get("v", [None])[0]
-
         elif re.fullmatch(r"/(?:shorts|embed|live)/[^/]+", parsed.path):
             video_id = parsed.path.split("/")[2]
-
         else:
             raise ValueError("Unsupported YouTube URL format.")
-
     elif hostname == "youtu.be":
         video_id = parsed.path.strip("/").split("/")[0]
-
     else:
         raise ValueError("The URL must belong to YouTube.")
 
     if not video_id or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
         raise ValueError("The URL does not contain a valid YouTube video ID.")
-
     return video_id
 
 
-def _should_retry(exc: Exception) -> bool:
-    """Determine whether a transcript-fetching failure is retryable."""
+def _exception_chain(exc: Exception):
+    """Yield an exception and its chained causes/contexts without looping."""
+    seen = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
 
-    # Blocking errors should not trigger repeated requests.
-    if isinstance(exc, (IpBlocked, RequestBlocked)):
-        return False
 
-    if isinstance(exc, YouTubeRequestFailed):
-        # Check the original exception when the library exposes it.
-        cause = exc.__cause__ or exc.__context__
-
-        if cause is not None and cause is not exc:
-            return _should_retry(cause)
-
-        # The library may retain the HTTP status only in its reason string.
-        reason = getattr(exc, "reason", "")
-        match = re.search(r"\b([45]\d{2})\b", str(reason))
-
+def _http_status_code(exc: Exception) -> int | None:
+    """Extract an HTTP status from requests/library exception chains."""
+    for item in _exception_chain(exc):
+        response = getattr(item, "response", None)
+        status = getattr(response, "status_code", None) or getattr(response, "status", None)
+        if status:
+            try:
+                return int(status)
+            except (TypeError, ValueError):
+                pass
+        text = " ".join(
+            str(value) for value in (
+                item, getattr(item, "reason", ""), getattr(item, "args", "")
+            )
+        )
+        match = re.search(r"\b([45]\d{2})\b", text)
         if match:
-            status_code = int(match.group(1))
-            return status_code >= 500 or status_code in {408, 425}
+            return int(match.group(1))
+    return None
 
-        # Unknown HTTP failures are not retried blindly.
+
+def _is_blocked(exc: Exception) -> bool:
+    """Identify rate limits and explicit YouTube/IP blocks."""
+    if any(isinstance(item, (IpBlocked, RequestBlocked)) for item in _exception_chain(exc)):
+        return True
+    return _http_status_code(exc) == 429
+
+
+def _should_retry(exc: Exception) -> bool:
+    """Retry only transient transport/server failures, never rate limits or proxy errors."""
+    if _is_blocked(exc):
         return False
 
-    # Retry temporary network failures.
-    if isinstance(exc, (TimeoutError, ConnectionError)):
-        return True
+    if any(isinstance(item, ProxyError) for item in _exception_chain(exc)):
+        return False
 
-    return False
+    status = _http_status_code(exc)
+    if status is not None:
+        return status in {408, 425, 500, 502, 503, 504}
+
+    if isinstance(exc, (RetryError,)):
+        return False
+
+    return isinstance(exc, (ConnectTimeout, ReadTimeout, TimeoutError, ConnectionError))
 
 
 def _wait_before_retry(attempt: int) -> None:
-    """Wait using exponential backoff with jitter."""
-
-    base_delay = 1.0
-    max_delay = 8.0
-
-    delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
-    delay += random.uniform(0, 0.5)
-
+    """Bounded exponential backoff with jitter for genuinely transient errors."""
+    delay = min(1.0 * (2 ** (attempt - 1)), 8.0) + random.uniform(0, 0.5)
     time.sleep(delay)
 
 
 class YouTubeTranscriptClient:
-    """Fetch timestamped transcripts from YouTube with audio transcription and proxy fallback."""
+    """Retrieve timestamped YouTube captions with bounded retries and a block cooldown."""
+
+    # Shared by client instances in this Python process; no requests are sent while open.
+    _blocked_until = 0.0
+    _block_reason = ""
+    _circuit_lock = Lock()
 
     def __init__(
         self,
-        enable_audio_fallback: bool = True,
+        enable_audio_fallback: bool = False,
         proxy_username: str | None = None,
         proxy_password: str | None = None,
         proxy_url: str | None = None,
+        block_cooldown_seconds: int | None = None,
     ):
         from config import settings
 
-        self.enable_audio_fallback = enable_audio_fallback
+        # Kept as an explicit opt-in for compatibility; production defaults to disabled.
+        self.enable_audio_fallback = bool(enable_audio_fallback)
+        self.block_cooldown_seconds = (
+            block_cooldown_seconds
+            if block_cooldown_seconds is not None
+            else settings.TRANSCRIPT_BLOCK_COOLDOWN_SECONDS
+        )
+
         if proxy_url:
             self.proxy_url = proxy_url.strip()
             self.proxy_username = (proxy_username or "").strip()
@@ -131,9 +165,9 @@ class YouTubeTranscriptClient:
                 )
                 req_dict = proxy_config.to_requests_dict()
                 self._effective_proxy_url = req_dict.get("https") or req_dict.get("http")
-                logger.info("Configured Webshare rotating residential proxy for YouTube requests.")
-            except Exception as e:
-                logger.warning("Failed to initialize WebshareProxyConfig: %s", e)
+                logger.info("Webshare proxy configuration initialized.")
+            except Exception:
+                logger.exception("Failed to initialize Webshare proxy configuration.")
         elif self.proxy_url:
             try:
                 from youtube_transcript_api.proxies import GenericProxyConfig
@@ -142,170 +176,66 @@ class YouTubeTranscriptClient:
                     https_url=self.proxy_url,
                 )
                 self._effective_proxy_url = self.proxy_url
-                logger.info("Configured generic proxy for YouTube requests.")
-            except Exception as e:
-                logger.warning("Failed to initialize GenericProxyConfig: %s", e)
+                logger.info("Generic proxy configuration initialized.")
+            except Exception:
+                logger.exception("Failed to initialize generic proxy configuration.")
 
-        if proxy_config is not None:
-            self._api = YouTubeTranscriptApi(proxy_config=proxy_config)
-        else:
-            self._api = YouTubeTranscriptApi()
+        self._api = (
+            YouTubeTranscriptApi(proxy_config=proxy_config)
+            if proxy_config is not None
+            else YouTubeTranscriptApi()
+        )
 
-    def _transcribe_audio_with_groq(self, video_url: str) -> list[dict]:
-        """Fallback: download audio with yt-dlp and transcribe using Groq Whisper Large v3."""
-        import os
-        import tempfile
-        import yt_dlp
-        from groq import Groq
-        from config import settings
-
-        api_key = settings.GROQ_API_KEY
-        if not api_key:
-            raise TranscriptError(
-                "Audio transcription fallback unavailable: GROQ_API_KEY is not configured."
+    @classmethod
+    def _open_circuit(cls, reason: str, cooldown_seconds: int) -> None:
+        with cls._circuit_lock:
+            cls._blocked_until = max(
+                cls._blocked_until, time.monotonic() + max(1, cooldown_seconds)
             )
+            cls._block_reason = reason
 
-        temp_dir = tempfile.gettempdir()
-        ts = int(time.time())
-        out_tmpl = os.path.join(temp_dir, f"yt_audio_{ts}_%(id)s.%(ext)s")
-        ydl_opts = {
-            "format": "bestaudio[ext=m4a]/bestaudio/best",
-            "outtmpl": out_tmpl,
-            "quiet": True,
-            "noplaylist": True,
-            "no_warnings": True,
-            "max_filesize": 25 * 1024 * 1024,
-            "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
-        }
-
-        def _try_download(proxy_url: str | None) -> str | None:
-            opts = dict(ydl_opts)
-            if proxy_url:
-                opts["proxy"] = proxy_url
-            else:
-                opts.pop("proxy", None)
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(video_url, download=True)
-                path = info.get("_filename") or ydl.prepare_filename(info)
-                if path and os.path.exists(path):
-                    return path
-                base_prefix = f"yt_audio_{ts}_"
-                for entry in os.listdir(temp_dir):
-                    if entry.startswith(base_prefix):
-                        return os.path.join(temp_dir, entry)
-            return None
-
-        filename = None
-        download_err = None
-        try:
-            logger.info("Starting yt-dlp audio download for Groq Whisper transcription: %s", video_url)
-            # Try with proxy first if configured
-            if self._effective_proxy_url:
-                try:
-                    filename = _try_download(self._effective_proxy_url)
-                except Exception as pe:
-                    logger.warning(
-                        "yt-dlp download failed through proxy (%s). Attempting direct download fallback.",
-                        pe,
-                    )
-                    download_err = pe
-
-            # If proxy wasn't configured or proxy download failed, try direct download
-            if not filename or not os.path.exists(filename):
-                try:
-                    filename = _try_download(None)
-                except Exception as de:
-                    logger.warning("yt-dlp direct download failed: %s", de)
-                    if not download_err:
-                        download_err = de
-
-            if not filename or not os.path.exists(filename):
-                raise TranscriptError(
-                    f"yt-dlp audio download failed across proxy and direct attempts: {download_err}"
-                )
-
-            logger.info("Transcribing audio with Groq Whisper Large v3: %s", filename)
-            client = Groq(api_key=api_key)
-            with open(filename, "rb") as audio_file:
-                response = client.audio.transcriptions.create(
-                    file=(os.path.basename(filename), audio_file),
-                    model="whisper-large-v3",
-                    response_format="verbose_json",
-                )
-
-            raw_segments = (
-                response.get("segments", [])
-                if isinstance(response, dict)
-                else getattr(response, "segments", [])
-            )
-
-            segments = []
-            for s in raw_segments:
-                text = s.get("text", "") if isinstance(s, dict) else getattr(s, "text", "")
-                start = s.get("start", 0.0) if isinstance(s, dict) else getattr(s, "start", 0.0)
-                end = s.get("end", start) if isinstance(s, dict) else getattr(s, "end", start)
-                if text and text.strip():
-                    segments.append({
-                        "text": text.strip(),
-                        "start": float(start),
-                        "duration": float(max(0.0, end - start)),
-                    })
-
-            if not segments:
-                raise TranscriptError(f"Groq Whisper returned no transcription segments for {video_url}.")
-
-            logger.info("Successfully transcribed %d segments using Groq Whisper.", len(segments))
-            return segments
-
-        except Exception as exc:
-            if isinstance(exc, TranscriptError):
-                raise
-            raise TranscriptError(
-                f"Groq Whisper audio transcription failed: {type(exc).__name__}: {exc}"
-            ) from exc
-
-        finally:
-            if filename and os.path.exists(filename):
-                try:
-                    os.remove(filename)
-                except Exception:
-                    pass
+    @classmethod
+    def _circuit_state(cls) -> tuple[float, str]:
+        with cls._circuit_lock:
+            remaining = cls._blocked_until - time.monotonic()
+            if remaining <= 0:
+                cls._blocked_until = 0.0
+                cls._block_reason = ""
+                return 0.0, ""
+            return remaining, cls._block_reason
 
     def fetch_transcript(
         self,
         video_url: str,
         languages: tuple[str, ...] = ("en", "en-US", "en-GB", "en-CA", "en-IN"),
     ) -> list[dict]:
-        """Fetch timestamped transcript snippets with fallback language resolution, bounded retries, and Whisper fallback."""
-
+        """Fetch captions; do not hammer YouTube after a 429/IP block."""
         video_id = extract_video_id(video_url)
-        max_attempts = 3
-        last_exception = None
 
+        remaining, reason = self._circuit_state()
+        if remaining > 0:
+            raise TranscriptError(
+                f"YouTube transcript provider is cooling down after {reason}. "
+                f"Retry in approximately {int(remaining) + 1} seconds."
+            )
+
+        max_attempts = 3
         for attempt in range(1, max_attempts + 1):
             try:
                 transcript = None
                 try:
-                    transcript = self._api.fetch(
-                        video_id,
-                        languages=list(languages),
-                    )
+                    transcript = self._api.fetch(video_id, languages=list(languages))
                 except NoTranscriptFound as not_found_err:
-                    # Fallback only when requested language was missing: check track list
                     try:
                         track_list = self._api.list(video_id)
                         try:
                             track = track_list.find_transcript(list(languages))
-                            candidate = track.fetch()
-                            if isinstance(candidate, (list, tuple)):
-                                transcript = candidate
+                            transcript = track.fetch()
                         except Exception:
                             for track in track_list:
                                 if getattr(track, "is_translatable", False):
-                                    candidate = track.translate("en").fetch()
-                                    if isinstance(candidate, (list, tuple)):
-                                        transcript = candidate
-                                        break
+                                    transcript = track.translate("en").fetch()
+                                    break
                     except Exception:
                         pass
                     if transcript is None:
@@ -319,52 +249,43 @@ class YouTubeTranscriptClient:
                     }
                     for snippet in transcript
                 ]
-
                 if not segments:
-                    raise TranscriptError(
-                        f"The transcript for video {video_id} is empty."
-                    )
+                    raise TranscriptError(f"The transcript for video {video_id} is empty.")
 
+                # A successful response closes a previous process-local cooldown.
+                with self._circuit_lock:
+                    type(self)._blocked_until = 0.0
+                    type(self)._block_reason = ""
                 return segments
 
             except TranscriptError:
-                # Empty transcripts and other explicit client errors
-                # should propagate without being wrapped again.
                 raise
-
             except Exception as exc:
-                last_exception = exc
+                if _is_blocked(exc):
+                    status = _http_status_code(exc)
+                    reason = f"HTTP {status}" if status else type(exc).__name__
+                    self._open_circuit(reason, self.block_cooldown_seconds)
+                    logger.warning(
+                        "YouTube transcript provider circuit opened for %s seconds (%s).",
+                        self.block_cooldown_seconds, reason,
+                    )
+                    raise TranscriptError(
+                        f"YouTube rejected transcript retrieval for video {video_id} "
+                        f"({reason}). Provider cooldown: {self.block_cooldown_seconds} seconds. "
+                        "No further requests will be sent during this cooldown."
+                    ) from exc
+
                 if attempt < max_attempts and _should_retry(exc):
+                    logger.warning(
+                        "Transient transcript transport failure (attempt %s/%s): %s",
+                        attempt, max_attempts, type(exc).__name__,
+                    )
                     _wait_before_retry(attempt)
                     continue
 
-                # When retries are exhausted or error is permanent, attempt audio fallback
-                from unittest.mock import Mock
-                is_mock_api = isinstance(self._api, Mock) or "Mock" in type(self._api).__name__
-                is_mock_fallback = isinstance(getattr(self, "_transcribe_audio_with_groq", None), Mock)
-                should_try_audio = self.enable_audio_fallback and (not is_mock_api or is_mock_fallback)
-
-                if should_try_audio:
-                    logger.warning(
-                        "YouTube transcript API failed for %s (%s). Attempting Groq Whisper audio fallback.",
-                        video_id,
-                        exc,
-                    )
-                    try:
-                        return self._transcribe_audio_with_groq(video_url)
-                    except Exception as fallback_err:
-                        raise TranscriptError(
-                            f"Could not retrieve transcript for video {video_id} via YouTube API ({exc}), "
-                            f"and Groq Whisper fallback also failed: {fallback_err}"
-                        ) from fallback_err
-
                 raise TranscriptError(
-                    f"Could not retrieve the transcript for video {video_id} "
-                    f"after {attempt} attempt(s). "
-                    f"Underlying error: {type(exc).__name__}: {exc}"
+                    f"Could not retrieve transcript for video {video_id} "
+                    f"after {attempt} attempt(s): {type(exc).__name__}: {exc}"
                 ) from exc
 
-        # Defensive fallback; the loop normally returns or raises.
-        raise TranscriptError(
-            f"Could not retrieve the transcript for video {video_id}."
-        )
+        raise TranscriptError(f"Could not retrieve transcript for video {video_id}.")
