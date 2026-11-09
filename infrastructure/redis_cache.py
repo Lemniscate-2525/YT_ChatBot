@@ -89,3 +89,23 @@ def find_semantic_match(user_id: str, query_embedding: list[float],
         logger.info("Semantic answer cache hit (cosine_similarity=%.4f).", best_score)
         return best_payload
     return None
+
+
+def invalidate_answer_caches() -> None:
+    """Invalidate exact and semantic answers after the indexed corpus changes."""
+    try:
+        patterns = (
+            f"{settings.REDIS_CACHE_PREFIX}:answer:*",
+            f"{settings.REDIS_CACHE_PREFIX}:semantic:*",
+        )
+        for pattern in patterns:
+            batch = []
+            for key in _client.scan_iter(match=pattern, count=200):
+                batch.append(key)
+                if len(batch) >= 200:
+                    _client.delete(*batch)
+                    batch.clear()
+            if batch:
+                _client.delete(*batch)
+    except redis.RedisError:
+        logger.warning("Could not invalidate answer caches after corpus update.", exc_info=True)
