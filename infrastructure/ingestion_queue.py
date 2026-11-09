@@ -41,12 +41,20 @@ def create_job(video_url: str, refresh: bool = False) -> dict:
 
 def get_job(job_id: str) -> dict | None:
     data = _client.hgetall(_status_key(job_id))
+    if data and data.get("result"):
+        try:
+            data["result"] = json.loads(data["result"])
+        except (TypeError, ValueError):
+            pass
     return data or None
 
 
 def set_job_status(job_id: str, status: str, message: str, **extra) -> None:
     mapping = {"status": status, "message": message, "updated_at": str(time.time())}
-    mapping.update({k: str(v) for k, v in extra.items() if v is not None})
+    mapping.update({
+        k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v))
+        for k, v in extra.items() if v is not None
+    })
     _client.hset(_status_key(job_id), mapping=mapping)
     _client.expire(_status_key(job_id), 7 * 24 * 3600)
 
