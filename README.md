@@ -218,6 +218,11 @@ All application parameters are consolidated and validated in `config.py`:
 | `GLOBAL_LIMIT` | No | `100` | Max system requests per rate-limit window |
 | `USER_LIMIT` | No | `10` | Max requests per session per rate-limit window |
 | `RATE_LIMIT_WINDOW`| No | `60` | Duration of sliding window in seconds |
+| `TRANSCRIPT_CACHE_TTL_SECONDS` | No | `2592000` | Redis transcript cache TTL |
+| `ANSWER_CACHE_TTL_SECONDS` | No | `86400` | Exact per-user answer cache TTL |
+| `SEMANTIC_CACHE_TTL_SECONDS` | No | `86400` | Semantic query cache TTL |
+| `SEMANTIC_CACHE_THRESHOLD` | No | `0.985` | Minimum cosine similarity for semantic cache reuse |
+| `SEMANTIC_CACHE_MAX_ENTRIES` | No | `200` | Maximum semantic candidates checked per user |
 | `CHROMA_DIR` | No | `chroma_db` | Storage path for Chroma vector files |
 | `KNOWLEDGE_GRAPH_PATH` | No | `data/knowledge_graph.json` | Path for persisted entity graph |
 | `ENABLE_API_DOCS` | No | `false` | Enables `/docs` interactive Swagger UI |
