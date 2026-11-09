@@ -7,7 +7,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from ingestion.yt_client import YouTubeTranscriptClient, extract_video_id
 from retrieval.vec_store import get_vector_store
-from infrastructure.redis_cache import get_json, set_json, transcript_key
+from infrastructure.redis_cache import get_json, set_json, transcript_key, invalidate_answer_caches
 from config import settings
 
 from ingestion.yt_client import TranscriptError
@@ -225,6 +225,9 @@ def ingest_video(video_url: str, refresh: bool = False) -> dict:
         documents = chunks,
         ids = chunk_ids,
     )
+
+    # Existing answers may no longer reflect the updated corpus.
+    invalidate_answer_caches()
 
     return {
         "status": "refreshed" if existing and refresh else "success",
