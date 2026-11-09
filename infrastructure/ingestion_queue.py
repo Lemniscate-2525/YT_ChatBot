@@ -35,7 +35,7 @@ def create_job(video_url: str, refresh: bool = False) -> dict:
         "created_at": now, "updated_at": now, "message": "Waiting for local transcript worker.",
     })
     _client.expire(_status_key(job_id), 7 * 24 * 3600)
-    _client.xadd(STREAM, payload)
+    _client.xadd(STREAM, payload, maxlen=10000, approximate=True)
     return get_job(job_id)
 
 
@@ -64,7 +64,7 @@ def read_jobs(consumer: str, block_ms: int = 5000):
     ensure_group()
     try:
         reclaimed = _client.xautoclaim(
-            STREAM, GROUP, consumer, min_idle_time=60_000, start_id="0-0", count=1
+            STREAM, GROUP, consumer, min_idle_time=300_000, start_id="0-0", count=1
         )
         messages = reclaimed[1] if reclaimed and len(reclaimed) > 1 else []
         if messages:
@@ -84,7 +84,7 @@ def retry_or_fail(message_id: str, fields: dict, error: str) -> None:
     job_id = fields["job_id"]
     if attempt < MAX_ATTEMPTS:
         fields["attempt"] = str(attempt + 1)
-        _client.xadd(STREAM, fields)
+        _client.xadd(STREAM, fields, maxlen=10000, approximate=True)
         set_job_status(job_id, "queued", f"Retry scheduled ({attempt + 1}/{MAX_ATTEMPTS}).")
     else:
         set_job_status(job_id, "failed", error[:1000])
