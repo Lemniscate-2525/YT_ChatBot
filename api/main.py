@@ -4,6 +4,8 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import re
+import secrets
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
@@ -20,6 +22,7 @@ from exceptions import (
 )
 from infrastructure.rate_limiter import is_redis_available
 from ingestion.ingestion import ingest_video
+from infrastructure.ingestion_queue import create_job, get_job, set_job_status
 from ingestion.yt_client import extract_video_id
 from knowledge_graph.entity_verification import verify_entity_mention
 from knowledge_graph.graph_store import get_knowledge_graph
@@ -93,6 +96,14 @@ class IngestRequest(BaseModel):
         return val
 
 
+
+class WorkerTranscriptRequest(BaseModel):
+    job_id: str = Field(min_length=32, max_length=64, pattern=r"^[a-f0-9]+$")
+    video_url: HttpUrl
+    refresh: bool = False
+    segments: list[dict[str, Any]] = Field(min_length=1, max_length=50000)
+
+
 class EntityVerifyRequest(BaseModel):
     mention: str = Field(min_length=1, max_length=150)
     entity_type: str = Field(default="PERSON", max_length=40)
@@ -147,6 +158,69 @@ def ingest(
         logger.exception("Ingestion failed")
         error_msg = str(exc).strip() or "Video ingestion failed."
         raise HTTPException(status_code=502, detail=error_msg) from exc
+
+
+
+@app.post("/ingest/jobs", status_code=status.HTTP_202_ACCEPTED)
+def submit_ingestion_job(
+    request: IngestRequest,
+    _client: str = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Queue transcript extraction for the authenticated local worker."""
+    try:
+        return create_job(str(request.video_url), refresh=request.refresh)
+    except Exception as exc:
+        logger.exception("Could not enqueue ingestion job")
+        raise HTTPException(status_code=503, detail="Ingestion queue is unavailable.") from exc
+
+
+@app.get("/ingest/jobs/{job_id}")
+def ingestion_job_status(
+    job_id: str,
+    _client: str = Depends(require_api_key),
+) -> dict[str, Any]:
+    if not re.fullmatch(r"[a-f0-9]{32}", job_id):
+        raise HTTPException(status_code=404, detail="Ingestion job not found.")
+    try:
+        job = get_job(job_id)
+    except Exception as exc:
+        logger.exception("Could not read ingestion job status")
+        raise HTTPException(status_code=503, detail="Ingestion queue is unavailable.") from exc
+    if not job:
+        raise HTTPException(status_code=404, detail="Ingestion job not found or expired.")
+    return job
+
+
+
+@app.post("/worker/transcripts")
+def receive_worker_transcript(
+    request: WorkerTranscriptRequest,
+    x_transcript_worker_token: str | None = Header(default=None, alias="X-Transcript-Worker-Token"),
+) -> dict[str, Any]:
+    """Accept transcript data only from the separately authenticated local worker."""
+    expected = os.getenv("TRANSCRIPT_WORKER_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="Transcript worker is not configured.")
+    if not x_transcript_worker_token or not secrets.compare_digest(x_transcript_worker_token, expected):
+        raise HTTPException(status_code=401, detail="Invalid worker credentials.")
+    try:
+        extract_video_id(str(request.video_url))
+        job = get_job(request.job_id)
+        if not job or job.get("video_url") != str(request.video_url):
+            raise HTTPException(status_code=404, detail="Matching ingestion job not found.")
+        result = ingest_video(
+            str(request.video_url),
+            refresh=request.refresh,
+            transcript_segments=request.segments,
+        )
+        set_job_status(request.job_id, "completed", result.get("message", "Ingestion completed."), result=result)
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Worker transcript ingestion failed")
+        set_job_status(request.job_id, "failed", f"{type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=502, detail="Transcript ingestion failed.") from exc
 
 
 @app.post("/ask")
