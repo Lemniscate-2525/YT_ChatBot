@@ -165,11 +165,11 @@ def ask_question(query: str, user_id: str = "local-dev-user"):
         if start_seconds is not None and video_url:
             separator = "&" if "?" in video_url else "?"
             source = f"{video_url}{separator}t={int(start_seconds)}s"
-        context_parts.append(f"Source: {source}\\nTranscript:\\n{doc.page_content}")
+        context_parts.append(f"Source: {source}\nTranscript:\n{doc.page_content}")
 
     entity_checks = _build_entity_checks(retrieved_docs)
     messages = PROMPT.invoke({
-        "context": "\\n\\n".join(context_parts),
+        "context": "\n\n".join(context_parts),
         "question": query,
         "entity_checks": entity_checks,
     })
