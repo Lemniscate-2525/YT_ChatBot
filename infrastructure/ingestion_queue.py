@@ -60,7 +60,18 @@ def ensure_group() -> None:
 
 
 def read_jobs(consumer: str, block_ms: int = 5000):
+    """Recover abandoned deliveries before reading new jobs."""
     ensure_group()
+    try:
+        reclaimed = _client.xautoclaim(
+            STREAM, GROUP, consumer, min_idle_time=60_000, start_id="0-0", count=1
+        )
+        messages = reclaimed[1] if reclaimed and len(reclaimed) > 1 else []
+        if messages:
+            return [(STREAM, messages)]
+    except redis.exceptions.ResponseError as exc:
+        # Older Redis-compatible providers may not implement XAUTOCLAIM.
+        logger.warning("Pending-job auto-claim unavailable: %s", exc)
     return _client.xreadgroup(GROUP, consumer, {STREAM: ">"}, count=1, block=block_ms)
 
 
