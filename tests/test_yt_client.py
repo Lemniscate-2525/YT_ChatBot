@@ -154,3 +154,14 @@ def test_generic_proxy_initialization():
         enable_audio_fallback=False,
     )
     assert client._effective_proxy_url == "http://proxy.example.com:8080"
+
+
+
+def test_explicit_shared_proxy_url_takes_precedence_over_webshare_credentials():
+    client = YouTubeTranscriptClient(
+        proxy_url="http://shared-user:shared-pass@198.51.100.10:8080",
+        proxy_username="residential-user",
+        proxy_password="residential-pass",
+        enable_audio_fallback=False,
+    )
+    assert client._effective_proxy_url == "http://shared-user:shared-pass@198.51.100.10:8080"
