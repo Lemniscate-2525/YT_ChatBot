@@ -24,5 +24,7 @@ services:
         sync: false
       - key: RAG_API_KEY
         generateValue: true
+      - key: TRANSCRIPT_WORKER_TOKEN
+        sync: false
       - key: REDIS_URL
         sync: false
