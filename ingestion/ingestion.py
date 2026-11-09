@@ -19,7 +19,7 @@ CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 150
 
 
-transcript_client = YouTubeTranscriptClient()
+transcript_client = YouTubeTranscriptClient(enable_audio_fallback=False)
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size = CHUNK_SIZE,
