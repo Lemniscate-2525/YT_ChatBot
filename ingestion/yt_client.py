@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlparse
 
 from requests.exceptions import (
     ConnectTimeout,
+    ConnectionError as RequestsConnectionError,
     ProxyError,
     ReadTimeout,
     RetryError,
@@ -105,7 +106,7 @@ def _should_retry(exc: Exception) -> bool:
     if isinstance(exc, (RetryError,)):
         return False
 
-    return isinstance(exc, (ConnectTimeout, ReadTimeout, TimeoutError, ConnectionError))
+    return isinstance(exc, (ConnectTimeout, ReadTimeout, TimeoutError, RequestsConnectionError, ConnectionError))
 
 
 def _wait_before_retry(attempt: int) -> None:
