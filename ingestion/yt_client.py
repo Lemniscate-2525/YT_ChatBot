@@ -156,7 +156,21 @@ class YouTubeTranscriptClient:
         proxy_config = None
         self._effective_proxy_url = None
 
-        if self.proxy_username and self.proxy_password:
+        # Explicit endpoint takes precedence. Webshare's free shared-proxy list
+        # provides individual IP:port endpoints; it is not the rotating-residential
+        # gateway expected by WebshareProxyConfig.
+        if self.proxy_url:
+            try:
+                from youtube_transcript_api.proxies import GenericProxyConfig
+                proxy_config = GenericProxyConfig(
+                    http_url=self.proxy_url,
+                    https_url=self.proxy_url,
+                )
+                self._effective_proxy_url = self.proxy_url
+                logger.info("Generic proxy endpoint configured.")
+            except Exception:
+                logger.exception("Failed to initialize generic proxy configuration.")
+        elif self.proxy_username and self.proxy_password:
             try:
                 from youtube_transcript_api.proxies import WebshareProxyConfig
                 proxy_config = WebshareProxyConfig(
@@ -165,20 +179,9 @@ class YouTubeTranscriptClient:
                 )
                 req_dict = proxy_config.to_requests_dict()
                 self._effective_proxy_url = req_dict.get("https") or req_dict.get("http")
-                logger.info("Webshare proxy configuration initialized.")
+                logger.info("Webshare residential proxy configuration initialized.")
             except Exception:
                 logger.exception("Failed to initialize Webshare proxy configuration.")
-        elif self.proxy_url:
-            try:
-                from youtube_transcript_api.proxies import GenericProxyConfig
-                proxy_config = GenericProxyConfig(
-                    http_url=self.proxy_url,
-                    https_url=self.proxy_url,
-                )
-                self._effective_proxy_url = self.proxy_url
-                logger.info("Generic proxy configuration initialized.")
-            except Exception:
-                logger.exception("Failed to initialize generic proxy configuration.")
 
         self._api = (
             YouTubeTranscriptApi(proxy_config=proxy_config)
