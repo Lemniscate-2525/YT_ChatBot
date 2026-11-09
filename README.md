@@ -101,6 +101,8 @@ sequenceDiagram
 - **Session-Aware Rate Limiting**: The client automatically tags requests with an isolated session identifier (`X-Session-ID`), enforcing per-user quotas (10 requests/min) alongside global infrastructure protection (100 requests/min).
 - **Hardened Prompt Security**: Token-level patterns and regex heuristics reject prompt injection vectors (`[INST]`, `<system>`, `DAN mode`, `jailbreak`) before hitting the LLM.
 - **Atomic Sliding Window with Fail-Safe**: Redis rate limiting runs inside an atomic Lua script. If Redis disconnects, the API responds with a structured HTTP 503 instead of crashing with an unhandled 500 error.
+- **Redis Transcript Cache**: Timestamped transcript segments are cached across API instances to avoid repeated YouTube requests.
+- **Redis Answer Caching**: Exact per-session answers are cached with their source chunks; high-threshold semantic matching can reuse near-identical queries. Cache entries are invalidated when the indexed corpus changes.
 - **Entity Knowledge Graph**: NetworkX graph store paired with RapidFuzz string scoring. Resolves spoken transcript variations against reviewed canonical entities while preserving provenance.
 - **Production Containerization**: Multi-stage, non-root `Dockerfile` and a 3-service `docker-compose.yml` for turnkey reproducibility.
 - **Zero-Cost Hosting Architecture**: Engineered to operate cleanly inside free-tier allowances ($0 / month).
