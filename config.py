@@ -19,17 +19,20 @@ class Settings:
         os.getenv("KNOWLEDGE_GRAPH_PATH", str(PROJECT_ROOT / "data" / "knowledge_graph.json"))
     ).expanduser()
 
-    # Redis & Rate limiting
+    # Redis & rate limiting
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     REDIS_TIMEOUT: float = float(os.getenv("REDIS_TIMEOUT", "2.0"))
     GLOBAL_LIMIT: int = int(os.getenv("GLOBAL_LIMIT", "100"))
     USER_LIMIT: int = int(os.getenv("USER_LIMIT", "10"))
     RATE_LIMIT_WINDOW: int = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
 
-    # Proxy Configuration (Optional Webshare / Rotating Residential)
+    # Transcript acquisition
     WEBSHARE_PROXY_USERNAME: str = os.getenv("WEBSHARE_PROXY_USERNAME", "")
     WEBSHARE_PROXY_PASSWORD: str = os.getenv("WEBSHARE_PROXY_PASSWORD", "")
     PROXY_URL: str = os.getenv("PROXY_URL", "")
+    TRANSCRIPT_BLOCK_COOLDOWN_SECONDS: int = int(
+        os.getenv("TRANSCRIPT_BLOCK_COOLDOWN_SECONDS", "900")
+    )
 
     # Security & API
     RAG_API_KEY: str = os.getenv("RAG_API_KEY", "")
