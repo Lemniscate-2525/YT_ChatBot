@@ -5,6 +5,8 @@ import os
 import re
 from functools import lru_cache
 
+from langchain_core.documents import Document
+
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
@@ -14,7 +16,8 @@ from security.input_validation import validate_query
 from security.prompt_security import detect_prompt_injection
 from security.guardrails import validate_answer
 from infrastructure.rate_limiter import check_rate_limit
-from retrieval.vec_store import get_vector_store
+from infrastructure.redis_cache import (exact_answer_key, find_semantic_match, get_json, save_semantic_entry, set_json)
+from retrieval.vec_store import get_vector_store, get_embeddings
 from knowledge_graph.graph_store import get_knowledge_graph
 
 from logging_config import setup_logging
@@ -72,16 +75,13 @@ def _get_runtime():
         raise RuntimeError(
             "The Chroma collection is empty. Ingest at least one YouTube video first."
         )
-    retriever = vector_store.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": 5},
-    )
+    embeddings = get_embeddings()
     llm = ChatGroq(
         model=settings.GROQ_MODEL,
         temperature=0,
         api_key=groq_key,
     )
-    return retriever, llm
+    return vector_store, embeddings, llm
 
 
 def _build_entity_checks(retrieved_docs) -> str:
@@ -118,14 +118,42 @@ def _build_entity_checks(retrieved_docs) -> str:
     )
 
 
+def _serialize_result(answer: str, docs: list[Document]) -> dict:
+    return {"answer": answer, "sources": [
+        {"page_content": doc.page_content, "metadata": doc.metadata} for doc in docs
+    ]}
+
+
+def _deserialize_result(payload: dict) -> tuple[str, list[Document]]:
+    answer = validate_answer(payload["answer"])
+    docs = [Document(page_content=item["page_content"], metadata=item.get("metadata", {}))
+            for item in payload.get("sources", [])]
+    return answer, docs
+
+
 def ask_question(query: str, user_id: str = "local-dev-user"):
-    """Run validated, rate-limited RAG inference with graph-backed name checks."""
+    """Validated RAG with per-user Redis exact and semantic answer caches."""
     query = validate_query(query)
     detect_prompt_injection(query)
     check_rate_limit(user_id)
 
-    retriever, llm = _get_runtime()
-    retrieved_docs = retriever.invoke(query)
+    exact_payload = get_json(exact_answer_key(user_id, query))
+    if exact_payload:
+        logger.info("Exact Redis answer cache hit | user_id=%s", user_id)
+        return _deserialize_result(exact_payload)
+
+    vector_store, embeddings, llm = _get_runtime()
+    query_embedding = embeddings.embed_query(query)
+
+    semantic_payload = find_semantic_match(user_id, query_embedding)
+    if semantic_payload:
+        logger.info("Semantic Redis answer cache hit | user_id=%s", user_id)
+        answer, docs = _deserialize_result(semantic_payload)
+        set_json(exact_answer_key(user_id, query), semantic_payload,
+                 settings.ANSWER_CACHE_TTL_SECONDS)
+        return answer, docs
+
+    retrieved_docs = vector_store.similarity_search_by_vector(query_embedding, k=5)
     if not retrieved_docs:
         return "No relevant transcript chunks were found.", []
 
@@ -137,24 +165,23 @@ def ask_question(query: str, user_id: str = "local-dev-user"):
         if start_seconds is not None and video_url:
             separator = "&" if "?" in video_url else "?"
             source = f"{video_url}{separator}t={int(start_seconds)}s"
-        context_parts.append(
-            f"Source: {source}\nTranscript:\n{doc.page_content}"
-        )
+        context_parts.append(f"Source: {source}\\nTranscript:\\n{doc.page_content}")
 
     entity_checks = _build_entity_checks(retrieved_docs)
     messages = PROMPT.invoke({
-        "context": "\n\n".join(context_parts),
+        "context": "\\n\\n".join(context_parts),
         "question": query,
         "entity_checks": entity_checks,
     })
     response = llm.invoke(messages)
     answer = validate_answer(response.content)
 
-    logger.info(
-        "RAG request completed | user_id=%s | retrieved_chunks=%d",
-        user_id,
-        len(retrieved_docs),
-    )
+    payload = _serialize_result(answer, retrieved_docs)
+    set_json(exact_answer_key(user_id, query), payload, settings.ANSWER_CACHE_TTL_SECONDS)
+    save_semantic_entry(user_id, query, query_embedding, payload)
+
+    logger.info("RAG request completed | user_id=%s | retrieved_chunks=%d",
+                user_id, len(retrieved_docs))
     return answer, retrieved_docs
 
 
