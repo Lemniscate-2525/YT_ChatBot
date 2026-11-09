@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
+import time
 import requests
 import streamlit as st
 
@@ -98,20 +99,44 @@ if submitted:
         st.error("Please provide a valid YouTube domain (youtube.com or youtu.be).")
     else:
         try:
-            with st.spinner("Fetching transcript, chunking, embedding, and storing..."):
+            with st.spinner("Queueing transcript extraction on your local worker..."):
                 response = api_post(
-                    "/ingest",
+                    "/ingest/jobs",
                     json={"video_url": clean_url, "refresh": refresh},
-                    timeout=300,
+                    timeout=15,
                 )
                 if response.status_code == 429:
-                    st.warning("Rate limit exceeded. Please wait a few seconds before trying again.")
+                    st.warning("Rate limit exceeded. Please wait before trying again.")
                 elif response.status_code == 401:
                     st.error("Authentication failed. Check your RAG_API_KEY.")
                 else:
                     response.raise_for_status()
-                    st.success("Ingestion completed")
-                    st.json(response.json())
+                    job = response.json()
+                    job_id = job["job_id"]
+                    st.info(f"Ingestion job queued: {job_id}")
+                    progress = st.progress(0)
+                    status_box = st.empty()
+                    started = time.monotonic()
+                    terminal = {"completed", "failed"}
+                    while time.monotonic() - started < 1800:
+                        status_response = api_get(f"/ingest/jobs/{job_id}", timeout=15)
+                        status_response.raise_for_status()
+                        job = status_response.json()
+                        state = job.get("status", "queued")
+                        status_box.info(f"Job status: {state} — {job.get('message', '')}")
+                        if state in terminal:
+                            progress.progress(100 if state == "completed" else 0)
+                            if state == "completed":
+                                st.success("Transcript extracted locally and ingested into the cloud RAG pipeline.")
+                                if job.get("result"):
+                                    st.json(job["result"])
+                            else:
+                                st.error(f"Ingestion failed: {job.get('message', 'Unknown worker error')}")
+                            break
+                        progress.progress(min(95, int((time.monotonic() - started) / 1800 * 95)))
+                        time.sleep(3)
+                    else:
+                        st.warning("Job is still running. You can check its status using job ID: " + job_id)
         except RuntimeError as exc:
             st.error(str(exc))
         except requests.RequestException as exc:
