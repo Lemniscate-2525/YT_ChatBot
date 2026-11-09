@@ -257,10 +257,10 @@ YouTube may block transcript requests from cloud-provider IP ranges. The hybrid 
 
 ### Setup
 
-1. Deploy the API and configure `REDIS_URL` and a strong `TRANSCRIPT_WORKER_TOKEN` in Render. Set the same `TRANSCRIPT_WORKER_TOKEN` in your local `.env`.
+1. Deploy the API and configure `REDIS_URL` and a strong `TRANSCRIPT_WORKER_TOKEN` in Render. Set the same `REDIS_URL` (your hosted Redis connection string) and `TRANSCRIPT_WORKER_TOKEN` in your local `.env`.
 2. Keep `youtube-cookies.txt` in the repository root on your own PC only. It is ignored by Git. Never upload it to GitHub, Streamlit, Render, or Redis.
 3. Set `YOUTUBE_COOKIES_FILE=./youtube-cookies.txt` in local `.env`.
-4. Install dependencies with `python -m pip install -r requirements.txt`.
+4. Install dependencies with `python -m pip install -r requirements.txt`. Ensure the local `.env` also has `RAG_API_URL` set to your deployed Render API URL.
 5. Start the worker from the repository root with `python -m worker.transcript_worker`. Keep the machine awake and connected while new videos are being ingested.
 6. Submit a video in Streamlit. The UI queues the job and polls its status. Existing indexed videos and RAG question answering continue to run in the cloud.
 
