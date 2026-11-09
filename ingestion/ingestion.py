@@ -7,6 +7,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from ingestion.yt_client import YouTubeTranscriptClient, extract_video_id
 from retrieval.vec_store import get_vector_store
+from infrastructure.redis_cache import get_json, set_json, transcript_key
+from config import settings
 
 from ingestion.yt_client import TranscriptError
 
@@ -197,9 +199,12 @@ def ingest_video(video_url: str, refresh: bool = False) -> dict:
             "chunks_added": 0,
         }
 
-    # Fetch and prepare the new transcript before modifying stored data : 
-
-    segments = transcript_client.fetch_transcript(canonical_url)
+    # Redis transcript cache avoids repeat requests to YouTube across API instances.
+    cache_key = transcript_key(video_id, "en")
+    segments = None if refresh else get_json(cache_key)
+    if segments is None:
+        segments = transcript_client.fetch_transcript(canonical_url)
+        set_json(cache_key, segments, settings.TRANSCRIPT_CACHE_TTL_SECONDS)
 
     chunks = create_chunks(
         segments = segments,
