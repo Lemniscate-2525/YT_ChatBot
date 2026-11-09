@@ -201,10 +201,11 @@ def ingest_video(video_url: str, refresh: bool = False, transcript_segments: lis
 
     # A trusted local worker may supply already-extracted segments. Otherwise,
     # retain the existing provider/cache path for local development and fallback.
+    cache_key = transcript_key(video_id, "en")
     if transcript_segments is not None:
         segments = transcript_segments
+        set_json(cache_key, segments, settings.TRANSCRIPT_CACHE_TTL_SECONDS)
     else:
-        cache_key = transcript_key(video_id, "en")
         segments = None if refresh else get_json(cache_key)
         if segments is None:
             segments = transcript_client.fetch_transcript(canonical_url)
