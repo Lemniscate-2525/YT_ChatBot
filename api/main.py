@@ -97,11 +97,17 @@ class IngestRequest(BaseModel):
 
 
 
+class TranscriptSegment(BaseModel):
+    text: str = Field(min_length=1, max_length=10000)
+    start: float = Field(ge=0)
+    duration: float = Field(default=0.0, ge=0)
+
+
 class WorkerTranscriptRequest(BaseModel):
     job_id: str = Field(min_length=32, max_length=64, pattern=r"^[a-f0-9]+$")
     video_url: HttpUrl
     refresh: bool = False
-    segments: list[dict[str, Any]] = Field(min_length=1, max_length=50000)
+    segments: list[TranscriptSegment] = Field(min_length=1, max_length=50000)
 
 
 class EntityVerifyRequest(BaseModel):
@@ -211,7 +217,7 @@ def receive_worker_transcript(
         result = ingest_video(
             str(request.video_url),
             refresh=request.refresh,
-            transcript_segments=request.segments,
+            transcript_segments=[segment.model_dump() for segment in request.segments],
         )
         set_job_status(request.job_id, "completed", result.get("message", "Ingestion completed."), result=result)
         return result
